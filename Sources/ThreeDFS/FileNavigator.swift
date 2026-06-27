@@ -1,0 +1,137 @@
+import Foundation
+import AppKit
+
+@MainActor
+final class FileNavigator: ObservableObject {
+    @Published private(set) var path: [FileNode] = []
+    @Published private(set) var currentChildren: [FileNode] = []
+    @Published private(set) var isLoading = false
+    @Published private(set) var epoch: UUID = UUID()
+
+    /// True until the user has either granted Full Disk Access or chosen a folder.
+    @Published private(set) var needsRootSelection = true
+
+    let index = FileSystemIndex()
+
+    private var securityScopedRoot: URL?
+    private let bookmarkKey = "com.maxburger.threedfs.rootBookmark"
+
+    init() {
+        // 1. Full Disk Access — best case: start from home dir, no NSOpenPanel needed.
+        if FullDiskAccessHelper.check() {
+            startFromHome()
+            return
+        }
+        // 2. Saved security-scoped bookmark from a previous NSOpenPanel selection.
+        if let data = UserDefaults.standard.data(forKey: bookmarkKey),
+           let url = resolveBookmark(data) {
+            securityScopedRoot = url
+            _ = url.startAccessingSecurityScopedResource()
+            needsRootSelection = false
+            Task {
+                await index.startScan(from: url)
+                await navigateTo(FileNode(url: url))
+            }
+        }
+        // 3. Otherwise needsRootSelection stays true → WelcomeView is shown.
+    }
+
+    // MARK: - Full Disk Access path
+
+    /// Called when the user grants FDA while WelcomeView is showing.
+    func useFullDiskAccess() {
+        startFromHome()
+    }
+
+    private func startFromHome() {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        path = []
+        needsRootSelection = false
+        Task {
+            await index.startScan(from: home)
+            await navigateTo(FileNode(url: home))
+        }
+    }
+
+    // MARK: - Navigation
+
+    func navigateTo(_ node: FileNode) async {
+        guard node.isDirectory else { return }
+        isLoading = true
+        let children = await FileSystemScanner.scan(url: node.url, index: index)
+        path.append(node)
+        currentChildren = children
+        epoch = UUID()
+        isLoading = false
+    }
+
+    func navigateBack(toIndex pathIndex: Int) async {
+        guard pathIndex < path.count else { return }
+        path = Array(path.prefix(pathIndex + 1))
+        guard let node = path.last else { return }
+        isLoading = true
+        let children = await FileSystemScanner.scan(url: node.url, index: index)
+        currentChildren = children
+        epoch = UUID()
+        isLoading = false
+    }
+
+    func navigateBack() async {
+        guard path.count > 1 else { return }
+        await navigateBack(toIndex: path.count - 2)
+    }
+
+    var canGoBack: Bool { path.count > 1 }
+
+    // MARK: - Folder picker (NSOpenPanel fallback)
+
+    func pickFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Choose Root"
+        panel.message = "Choose a folder for 3DFS to explore"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        adoptRoot(url)
+    }
+
+    func adoptRoot(_ url: URL) {
+        // Persist a security-scoped bookmark so access survives app restarts.
+        if let data = try? url.bookmarkData(
+            options: .withSecurityScope,
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        ) {
+            UserDefaults.standard.set(data, forKey: bookmarkKey)
+        }
+
+        securityScopedRoot?.stopAccessingSecurityScopedResource()
+        securityScopedRoot = url
+        _ = url.startAccessingSecurityScopedResource()
+
+        path = []
+        needsRootSelection = false
+        Task {
+            await index.startScan(from: url)
+            await navigateTo(FileNode(url: url))
+        }
+    }
+
+    // MARK: - Private
+
+    private func resolveBookmark(_ data: Data) -> URL? {
+        var isStale = false
+        guard let url = try? URL(
+            resolvingBookmarkData: data,
+            options: .withSecurityScope,
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        ) else { return nil }
+
+        if isStale, let fresh = try? url.bookmarkData(options: .withSecurityScope) {
+            UserDefaults.standard.set(fresh, forKey: bookmarkKey)
+        }
+        return url
+    }
+}
