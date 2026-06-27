@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 import AppKit
 
@@ -340,3 +341,4 @@ private struct NameField: View {
         selectedName = trimmed
     }
 }
+#endif

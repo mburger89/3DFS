@@ -3,6 +3,16 @@ import SwiftUI
 @main
 struct ThreeDFSApp: App {
     var body: some Scene {
+        mainWindowScene
+#if os(macOS)
+        themeEditorScene
+#endif
+    }
+}
+
+#if os(macOS)
+private extension ThreeDFSApp {
+    var mainWindowScene: some Scene {
         WindowGroup {
             ContentView()
                 .frame(minWidth: 900, minHeight: 600)
@@ -14,7 +24,9 @@ struct ThreeDFSApp: App {
                 Button("About 3DFS") { }
             }
         }
+    }
 
+    var themeEditorScene: some Scene {
         Window("Theme Editor", id: "theme-editor") {
             ThemeEditorView()
         }
@@ -23,3 +35,13 @@ struct ThreeDFSApp: App {
         .defaultSize(width: 720, height: 560)
     }
 }
+#else
+private extension ThreeDFSApp {
+    var mainWindowScene: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+        .defaultSize(width: 1280, height: 800)
+    }
+}
+#endif

@@ -24,7 +24,9 @@ struct FileNode: Identifiable, Hashable, Sendable {
     func hash(into hasher: inout Hasher) { hasher.combine(url) }
     static func == (lhs: FileNode, rhs: FileNode) -> Bool { lhs.url == rhs.url }
 
+#if os(macOS)
     static func root() -> FileNode {
         FileNode(url: FileManager.default.homeDirectoryForCurrentUser)
     }
+#endif
 }

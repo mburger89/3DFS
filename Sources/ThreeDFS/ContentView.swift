@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @StateObject private var navigator = FileNavigator()
@@ -10,6 +11,14 @@ struct ContentView: View {
                 WelcomeView(navigator: navigator)
             } else {
                 mainView
+            }
+        }
+        .fileImporter(
+            isPresented: $navigator.showingFolderPicker,
+            allowedContentTypes: [.folder]
+        ) { result in
+            if case .success(let url) = result {
+                navigator.adoptRoot(url)
             }
         }
     }
@@ -35,7 +44,7 @@ struct ContentView: View {
                 }
             }
         }
-        .background(Color(nsColor: NSColor(calibratedRed: 0.03, green: 0.04, blue: 0.07, alpha: 1)))
+        .background(Color(red: 0.03, green: 0.04, blue: 0.07))
         .animation(.easeInOut(duration: 0.2), value: showBreadcrumbs)
     }
 
@@ -48,7 +57,11 @@ struct ContentView: View {
                 .foregroundColor(.secondary)
         }
         .padding(24)
+#if os(macOS)
         .glassEffect(.regular, in: .rect(cornerRadius: 16))
+#else
+        .background(.regularMaterial, in: .rect(cornerRadius: 16))
+#endif
     }
 
     private var loadingOverlay: some View {
@@ -61,7 +74,11 @@ struct ContentView: View {
                 .foregroundColor(.secondary)
         }
         .frame(width: 110, height: 80)
+#if os(macOS)
         .glassEffect(.regular, in: .rect(cornerRadius: 16))
+#else
+        .background(.regularMaterial, in: .rect(cornerRadius: 16))
+#endif
     }
 }
 
@@ -134,9 +151,11 @@ private struct Toolbar: View {
                         }
                     }
                 }
+#if os(macOS)
                 Divider()
                 Button("Import Theme…") { themeManager.importTheme() }
                 Button("Theme Editor…") { openWindow(id: "theme-editor") }
+#endif
             } label: {
                 Image(systemName: "paintpalette")
                     .font(.system(size: 12))
@@ -163,6 +182,10 @@ private struct Toolbar: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
+#if os(macOS)
         .glassEffect(.regular.interactive(), in: .rect)
+#else
+        .background(.ultraThinMaterial)
+#endif
     }
 }

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		038994AD2FF08CBB00BACFA4 /* GestureSCNView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 038994AC2FF08CBB00BACFA4 /* GestureSCNView.swift */; };
 		A1B2C3D4E5F60021000000AA /* FileScapeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60005000000AA /* FileScapeApp.swift */; };
 		A1B2C3D4E5F60022000000AA /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60006000000AA /* ContentView.swift */; };
 		A1B2C3D4E5F60023000000AA /* FileNavigator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60007000000AA /* FileNavigator.swift */; };
@@ -22,13 +23,14 @@
 		A1B2C3D4E5F6002D000000AA /* VolumeNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60012000000AA /* VolumeNode.swift */; };
 		A1B2C3D4E5F6002E000000AA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60004000000AA /* Assets.xcassets */; };
 		A1B2C3D4E5F6002F000000AA /* FullDiskAccessHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60013000000AA /* FullDiskAccessHelper.swift */; };
-		A1B2C3D4E5F60045000000AA /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60014000000AA /* Theme.swift */; };
-		A1B2C3D4E5F60046000000AA /* ThemeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60015000000AA /* ThemeManager.swift */; };
 		A1B2C3D4E5F60043000000AA /* YAMLThemeParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60016000000AA /* YAMLThemeParser.swift */; };
 		A1B2C3D4E5F60044000000AA /* ThemeEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60017000000AA /* ThemeEditorView.swift */; };
+		A1B2C3D4E5F60045000000AA /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60014000000AA /* Theme.swift */; };
+		A1B2C3D4E5F60046000000AA /* ThemeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60015000000AA /* ThemeManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		038994AC2FF08CBB00BACFA4 /* GestureSCNView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GestureSCNView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000000AA /* 3DFS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = 3DFS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1B2C3D4E5F60002000000AA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A1B2C3D4E5F60003000000AA /* 3DFS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = 3DFS.entitlements; sourceTree = "<group>"; };
@@ -123,6 +125,7 @@
 				A1B2C3D4E5F6000F000000AA /* KeyCaptureSCNView.swift */,
 				A1B2C3D4E5F60011000000AA /* FileScapeSceneView.swift */,
 				A1B2C3D4E5F60012000000AA /* VolumeNode.swift */,
+				038994AC2FF08CBB00BACFA4 /* GestureSCNView.swift */,
 			);
 			path = Scene;
 			sourceTree = "<group>";
@@ -135,17 +138,6 @@
 				A1B2C3D4E5F60003000000AA /* 3DFS.entitlements */,
 			);
 			path = Support;
-			sourceTree = "<group>";
-		};
-		A1B2C3D4E5F60039000000AA /* Theming */ = {
-			isa = PBXGroup;
-			children = (
-				A1B2C3D4E5F60014000000AA /* Theme.swift */,
-				A1B2C3D4E5F60015000000AA /* ThemeManager.swift */,
-				A1B2C3D4E5F60016000000AA /* YAMLThemeParser.swift */,
-				A1B2C3D4E5F60017000000AA /* ThemeEditorView.swift */,
-			);
-			path = Theming;
 			sourceTree = "<group>";
 		};
 		A1B2C3D4E5F60038000000AA /* ThreeDFS */ = {
@@ -162,6 +154,17 @@
 				A1B2C3D4E5F60039000000AA /* Theming */,
 			);
 			path = ThreeDFS;
+			sourceTree = "<group>";
+		};
+		A1B2C3D4E5F60039000000AA /* Theming */ = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D4E5F60014000000AA /* Theme.swift */,
+				A1B2C3D4E5F60015000000AA /* ThemeManager.swift */,
+				A1B2C3D4E5F60016000000AA /* YAMLThemeParser.swift */,
+				A1B2C3D4E5F60017000000AA /* ThemeEditorView.swift */,
+			);
+			path = Theming;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -244,6 +247,7 @@
 				A1B2C3D4E5F60029000000AA /* CameraController.swift in Sources */,
 				A1B2C3D4E5F6002A000000AA /* FileSystemScene.swift in Sources */,
 				A1B2C3D4E5F6002B000000AA /* KeyCaptureSCNView.swift in Sources */,
+				038994AD2FF08CBB00BACFA4 /* GestureSCNView.swift in Sources */,
 				A1B2C3D4E5F6002C000000AA /* FileScapeSceneView.swift in Sources */,
 				A1B2C3D4E5F6002D000000AA /* VolumeNode.swift in Sources */,
 				A1B2C3D4E5F6002F000000AA /* FullDiskAccessHelper.swift in Sources */,
@@ -275,8 +279,11 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.maxburger.threedfs;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "macosx xros xrsimulator";
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 7;
 			};
 			name = Debug;
 		};
@@ -298,8 +305,11 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.maxburger.threedfs;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "macosx xros xrsimulator";
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 7;
 			};
 			name = Release;
 		};

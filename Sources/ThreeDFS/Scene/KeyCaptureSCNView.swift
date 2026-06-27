@@ -1,3 +1,4 @@
+#if os(macOS)
 import SceneKit
 import AppKit
 
@@ -158,3 +159,4 @@ final class KeyCaptureSCNView: SCNView {
         return CGPoint(x: loc.x, y: bounds.height - loc.y)
     }
 }
+#endif

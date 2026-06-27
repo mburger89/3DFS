@@ -1,5 +1,5 @@
 import SceneKit
-import AppKit
+import CoreGraphics
 
 @MainActor
 final class FileSystemScene: SCNScene {
@@ -29,8 +29,8 @@ final class FileSystemScene: SCNScene {
     }
 
     func applyTheme(_ theme: Theme) {
-        background.contents = NSColor(hex: theme.scene.background)
-            ?? NSColor(calibratedRed: 0.03, green: 0.04, blue: 0.07, alpha: 1)
+        background.contents = CGColor.from(hex: theme.scene.background)
+            ?? CGColor(srgbRed: 0.03, green: 0.04, blue: 0.07, alpha: 1)
     }
 
     private func setupCamera() {
@@ -48,17 +48,17 @@ final class FileSystemScene: SCNScene {
     private func setupLights() {
         let ambient = SCNLight()
         ambient.type = .ambient
-        ambient.color = NSColor(white: 0.28, alpha: 1)
+        ambient.color = CGColor(gray: 0.28, alpha: 1)
         let ambientNode = SCNNode(); ambientNode.light = ambient
         rootNode.addChildNode(ambientNode)
 
         let key = SCNLight()
         key.type = .directional
-        key.color = NSColor(calibratedRed: 0.9, green: 0.92, blue: 1.0, alpha: 1)
+        key.color = CGColor(srgbRed: 0.9, green: 0.92, blue: 1.0, alpha: 1)
         key.intensity = 800
         key.castsShadow = true
         key.shadowRadius = 4
-        key.shadowColor = NSColor(white: 0, alpha: 0.5)
+        key.shadowColor = CGColor(gray: 0, alpha: 0.5)
         key.shadowMode = .deferred
         let keyNode = SCNNode(); keyNode.light = key
         keyNode.eulerAngles = SCNVector3(-Float.pi / 4, Float.pi / 5, 0)
@@ -66,7 +66,7 @@ final class FileSystemScene: SCNScene {
 
         let fill = SCNLight()
         fill.type = .directional
-        fill.color = NSColor(calibratedRed: 0.3, green: 0.4, blue: 0.7, alpha: 1)
+        fill.color = CGColor(srgbRed: 0.3, green: 0.4, blue: 0.7, alpha: 1)
         fill.intensity = 300
         let fillNode = SCNNode(); fillNode.light = fill
         fillNode.eulerAngles = SCNVector3(-Float.pi / 6, -Float.pi / 3, 0)
@@ -78,7 +78,7 @@ final class FileSystemScene: SCNScene {
         floor.reflectivity = 0.08
         floor.reflectionFalloffEnd = 8
         let mat = SCNMaterial()
-        mat.diffuse.contents = NSColor(calibratedRed: 0.05, green: 0.06, blue: 0.10, alpha: 1)
+        mat.diffuse.contents = CGColor(srgbRed: 0.05, green: 0.06, blue: 0.10, alpha: 1)
         mat.lightingModel = .lambert
         floor.materials = [mat]
         rootNode.addChildNode(SCNNode(geometry: floor))

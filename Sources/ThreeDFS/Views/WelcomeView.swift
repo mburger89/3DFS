@@ -1,13 +1,15 @@
 import SwiftUI
 
 struct WelcomeView: View {
+#if os(macOS)
     @StateObject private var fdaHelper = FullDiskAccessHelper()
+#endif
     let navigator: FileNavigator
 
     var body: some View {
         ZStack {
             // Deep space background — lets Liquid Glass pull from it naturally
-            Color(nsColor: NSColor(calibratedRed: 0.03, green: 0.04, blue: 0.07, alpha: 1))
+            Color(red: 0.03, green: 0.04, blue: 0.07)
                 .ignoresSafeArea()
 
             VStack(spacing: 40) {
@@ -35,6 +37,7 @@ struct WelcomeView: View {
 
                 // Access cards — Liquid Glass panels
                 HStack(alignment: .top, spacing: 16) {
+#if os(macOS)
                     AccessCard(
                         icon: "lock.open.fill",
                         iconColor: Color(red: 0.35, green: 0.75, blue: 0.45),
@@ -50,6 +53,7 @@ struct WelcomeView: View {
                     ) {
                         fdaHelper.requestAccess()
                     }
+#endif
 
                     AccessCard(
                         icon: "folder.fill",
@@ -75,7 +79,9 @@ struct WelcomeView: View {
                         hint("Two-finger scroll", "Pan")
                         hint("Pinch", "Zoom")
                         hint("Click volume", "Enter folder")
+#if os(macOS)
                         hint("WASD · Q/E", "Pan · Zoom")
+#endif
                     }
                 }
                 .padding(.top, 4)
@@ -83,12 +89,14 @@ struct WelcomeView: View {
             .padding(48)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+#if os(macOS)
         .onReceive(fdaHelper.$isGranted) { granted in
             if granted { navigator.useFullDiskAccess() }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             fdaHelper.refresh()
         }
+#endif
     }
 
     private func hint(_ key: String, _ value: String) -> some View {
@@ -159,6 +167,10 @@ private struct AccessCard: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, minHeight: 180, alignment: .topLeading)
+#if os(macOS)
         .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+#else
+        .background(.regularMaterial, in: .rect(cornerRadius: 16))
+#endif
     }
 }
