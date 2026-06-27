@@ -1,5 +1,26 @@
+# Xcode
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcworkspace/xcshareddata/
+DerivedData/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xccheckout
+*.moved-aside
+*.xcuserstate
+*.xcscmblueprint
+
+# Swift Package Manager
 .build/
 .swiftpm/
-*.xcuserstate
-xcuserdata/
-DerivedData/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+*.icloud
+
+# Instruments
+*.trace
