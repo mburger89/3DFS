@@ -48,12 +48,20 @@ enum VolumeNode {
     // MARK: - Material builders
 
     private static func makeSideMaterial(fileNode: FileNode, boxWidth: Float, boxHeight: Float, theme: Theme) async -> any Material {
-        if fileNode.isDirectory,
-           let img = drawSideTexture(fileNode: fileNode, boxWidth: boxWidth, boxHeight: boxHeight, theme: theme),
-           let tex = await loadTexture(img, key: "side|\(theme.name)|\(fileNode.url.path)") {
-            var mat = UnlitMaterial()
-            mat.color = .init(tint: .white, texture: MaterialParameters.Texture(tex))
-            return mat
+        if fileNode.isDirectory {
+            if let img = drawSideTexture(fileNode: fileNode, boxWidth: boxWidth, boxHeight: boxHeight, theme: theme),
+               let tex = await loadTexture(img, key: "side|\(theme.name)|\(fileNode.url.path)") {
+                var mat = UnlitMaterial()
+                mat.color = .init(tint: .white, texture: MaterialParameters.Texture(tex))
+                return mat
+            }
+        } else {
+            if let img = drawFileSideTexture(fileNode: fileNode, boxWidth: boxWidth, boxHeight: boxHeight, theme: theme),
+               let tex = await loadTexture(img, key: "fileside|\(theme.name)|\(fileNode.url.path)") {
+                var mat = UnlitMaterial()
+                mat.color = .init(tint: .white, texture: MaterialParameters.Texture(tex))
+                return mat
+            }
         }
         let cg = CGColor.from(hex: theme.file.sideColor) ?? CGColor(srgbRed: 0.06, green: 0.10, blue: 0.08, alpha: 1)
         return SimpleMaterial(color: rkColor(cg), roughness: 1.0, isMetallic: false)
@@ -153,6 +161,51 @@ enum VolumeNode {
             drawLine(ctx: ctx, text: "+ \(fileNode.topChildren.count - maxRows) more…", font: sysFont(15),
                      color: CGColor.from(hex: t.moreText) ?? CGColor(gray: 0.4, alpha: 1),
                      x: 24, y: y, maxWidth: wf - 48, truncate: false)
+        }
+        return ctx.makeImage()
+    }
+
+    // MARK: - Side texture (files) — Core Graphics
+
+    private static func drawFileSideTexture(fileNode: FileNode, boxWidth: Float, boxHeight: Float, theme: Theme) -> CGImage? {
+        let t = theme.file
+        let w = 512
+        let h = max(32, Int(CGFloat(w) * CGFloat(boxHeight) / CGFloat(boxWidth)))
+        let wf = CGFloat(w), hf = CGFloat(h)
+        guard let ctx = bitmapContext(width: w, height: h) else { return nil }
+
+        ctx.setFillColor(CGColor.from(hex: t.sideColor) ?? CGColor(gray: 0.05, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: wf, height: hf))
+
+        stroke(ctx: ctx, rect: CGRect(x: 1, y: 1, width: wf - 2, height: hf - 2), radius: 3,
+               color: CGColor.from(hex: t.topBorder) ?? CGColor(srgbRed: 0, green: 1, blue: 0, alpha: 0.5), lineWidth: 1.5)
+
+        let fontSize = max(10, CGFloat(h) * 0.52)
+        let textY    = (hf - fontSize) * 0.45
+
+        let ext = fileNode.url.pathExtension.uppercased()
+        if !ext.isEmpty {
+            let badgeFont  = sysFontMono(fontSize * 0.75)
+            let badgeLine  = ctLine(text: ext, font: badgeFont, color: CGColor.from(hex: t.badgeText) ?? CGColor(gray: 1, alpha: 1))
+            let bounds     = CTLineGetBoundsWithOptions(badgeLine, [])
+            let pad: CGFloat = 5
+            let bRect = CGRect(x: wf - bounds.width - pad * 2 - 10,
+                               y: (hf - bounds.height) * 0.5,
+                               width: bounds.width + pad * 2,
+                               height: bounds.height + 3)
+            let bPath = CGPath(roundedRect: bRect, cornerWidth: 3, cornerHeight: 3, transform: nil)
+            ctx.addPath(bPath)
+            ctx.setFillColor(CGColor.from(hex: t.badgeBackground) ?? CGColor(gray: 0.2, alpha: 1))
+            ctx.fillPath()
+            ctx.textPosition = CGPoint(x: bRect.minX + pad, y: bRect.minY + 2)
+            CTLineDraw(badgeLine, ctx)
+            drawLine(ctx: ctx, text: fileNode.name, font: sysFontBold(fontSize),
+                     color: CGColor.from(hex: t.nameText) ?? CGColor(gray: 1, alpha: 1),
+                     x: 10, y: textY, maxWidth: bRect.minX - 16, truncate: true)
+        } else {
+            drawLine(ctx: ctx, text: fileNode.name, font: sysFontBold(fontSize),
+                     color: CGColor.from(hex: t.nameText) ?? CGColor(gray: 1, alpha: 1),
+                     x: 10, y: textY, maxWidth: wf - 20, truncate: true)
         }
         return ctx.makeImage()
     }
