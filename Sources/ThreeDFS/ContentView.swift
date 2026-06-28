@@ -52,9 +52,9 @@ struct ContentView: View {
         VStack(spacing: 8) {
             Image(systemName: "folder.badge.questionmark")
                 .font(.system(size: 40))
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
             Text("No accessible items")
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
         }
         .padding(24)
 #if os(macOS)
@@ -71,7 +71,7 @@ struct ContentView: View {
                 .tint(.white)
             Text("Scanning…")
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
         }
         .frame(width: 110, height: 80)
 #if os(macOS)
@@ -99,7 +99,7 @@ private struct Toolbar: View {
                     .font(.system(size: 13, weight: .medium))
             }
             .buttonStyle(.plain)
-            .foregroundColor(navigator.canGoBack ? .primary : .secondary.opacity(0.4))
+            .foregroundStyle(navigator.canGoBack ? Color.primary : Color.secondary.opacity(0.4))
             .disabled(!navigator.canGoBack)
             .keyboardShortcut("[", modifiers: .command)
             .help("Go back  ⌘[")
@@ -111,11 +111,11 @@ private struct Toolbar: View {
             HStack(spacing: 4) {
                 Text("3DFS")
                     .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                    .foregroundColor(.primary.opacity(0.6))
+                    .foregroundStyle(.primary.opacity(0.6))
                 if navigator.path.count > 1 {
                     Text("/ \(navigator.path.last?.name ?? "")")
                         .font(.system(size: 13, weight: .regular))
-                        .foregroundColor(.primary.opacity(0.4))
+                        .foregroundStyle(.primary.opacity(0.4))
                         .lineLimit(1)
                 }
             }
@@ -130,7 +130,7 @@ private struct Toolbar: View {
                     .font(.system(size: 12))
             }
             .buttonStyle(.plain)
-            .foregroundColor(showBreadcrumbs ? .primary : .primary.opacity(0.4))
+            .foregroundStyle(showBreadcrumbs ? Color.primary : Color.primary.opacity(0.4))
             .help(showBreadcrumbs ? "Hide breadcrumbs" : "Show breadcrumbs")
 
             Divider()

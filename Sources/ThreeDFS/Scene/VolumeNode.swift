@@ -41,7 +41,6 @@ enum VolumeNode {
             ShapeResource.generateBox(size: SIMD3<Float>(boxWidth, boxHeight, boxDepth))
         ]))
         entity.components.set(InputTargetComponent())
-        entity.components.set(HoverEffectComponent())
         return entity
     }
 
