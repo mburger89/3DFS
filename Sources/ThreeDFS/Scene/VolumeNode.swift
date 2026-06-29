@@ -1,282 +1,300 @@
-import SceneKit
-import AppKit
+import RealityKit
+import CoreGraphics
+import CoreText
+import Foundation
 
-final class VolumeNode: SCNNode {
+// MARK: - VolumeNodeComponent
+
+/// Attached to each box entity so tap handlers can retrieve the associated file node.
+struct VolumeNodeComponent: Component {
     let fileNode: FileNode
     let boxHeight: Float
+}
 
-    // Cache key pairs theme name + URL so cached textures are invalidated on theme switch.
-    nonisolated(unsafe) private static let sideTextureCache = NSCache<NSString, NSImage>()
-    nonisolated(unsafe) private static let fileTopTextureCache = NSCache<NSString, NSImage>()
+// MARK: - VolumeNode factory
 
-    init(fileNode: FileNode, boxWidth: Float, boxDepth: Float, theme: Theme) {
-        self.fileNode = fileNode
+@MainActor
+enum VolumeNode {
+    // Cache TextureResource objects; keyed by "face|theme|url" so they invalidate on theme change.
+    nonisolated(unsafe) private static let textureCache = NSCache<NSString, TextureResource>()
 
-        if fileNode.isDirectory {
-            let raw = log2(Double(max(1, fileNode.childCount)) + 1.5) * 0.75
-            self.boxHeight = Float(min(max(0.35, raw), 5.5))
-        } else {
-            self.boxHeight = 0.12
-        }
+    static func make(fileNode: FileNode, boxWidth: Float, boxDepth: Float, theme: Theme) async -> ModelEntity {
+        let boxHeight: Float = fileNode.isDirectory
+            ? Float(min(max(0.35, log2(Double(max(1, fileNode.childCount)) + 1.5) * 0.75), 5.5))
+            : 0.12
 
-        super.init()
-
-        let box = SCNBox(
-            width: CGFloat(boxWidth),
-            height: CGFloat(boxHeight),
-            length: CGFloat(boxDepth),
-            chamferRadius: 0.06
+        // splitFaces: true → 6 submeshes:  0=Front(+Z) 1=Top(+Y) 2=Back(-Z) 3=Bottom(-Y) 4=Right(+X) 5=Left(-X)
+        let mesh = MeshResource.generateBox(
+            width: boxWidth, height: boxHeight, depth: boxDepth,
+            cornerRadius: 0.06, splitFaces: true
         )
 
-        let side   = VolumeNode.makeSideMaterial(fileNode: fileNode, boxWidth: boxWidth, boxHeight: self.boxHeight, theme: theme)
-        let top    = VolumeNode.makeTopMaterial(fileNode: fileNode, theme: theme)
-        let bottom = VolumeNode.makeBottomMaterial(theme: theme)
+        let side   = await makeSideMaterial(fileNode: fileNode, boxWidth: boxWidth, boxHeight: boxHeight, theme: theme)
+        let top    = await makeTopMaterial(fileNode: fileNode, theme: theme)
+        let bottom = makeBottomMaterial(theme: theme)
+        // Order must match RealityKit splitFaces index: [front, top, back, bottom, right, left]
+        let materials: [any Material] = [side, top, side, bottom, side, side]
 
-        // SCNBox material order: front, right, back, left, top, bottom
-        box.materials = [side, side, side, side, top, bottom]
-
-        addChildNode(SCNNode(geometry: box))
+        let entity = ModelEntity(mesh: mesh, materials: materials)
+        entity.components.set(VolumeNodeComponent(fileNode: fileNode, boxHeight: boxHeight))
+        entity.components.set(CollisionComponent(shapes: [
+            ShapeResource.generateBox(size: SIMD3<Float>(boxWidth, boxHeight, boxDepth))
+        ]))
+        entity.components.set(InputTargetComponent())
+        return entity
     }
 
-    required init?(coder: NSCoder) { fatalError() }
+    // MARK: - Material builders
 
-    // MARK: - Highlight
-
-    func setHighlighted(_ on: Bool) {
-        SCNTransaction.begin()
-        SCNTransaction.animationDuration = 0.12
-        childNodes.first?.scale = on
-            ? SCNVector3(1.06, 1.06, 1.06)
-            : SCNVector3(1, 1, 1)
-        SCNTransaction.commit()
-    }
-
-    // MARK: - Materials
-
-    private static func makeSideMaterial(fileNode: FileNode, boxWidth: Float, boxHeight: Float, theme: Theme) -> SCNMaterial {
-        let mat = SCNMaterial()
+    private static func makeSideMaterial(fileNode: FileNode, boxWidth: Float, boxHeight: Float, theme: Theme) async -> any Material {
         if fileNode.isDirectory {
-            mat.diffuse.contents = sideTexture(for: fileNode, boxWidth: boxWidth, boxHeight: boxHeight, theme: theme)
+            if let img = drawSideTexture(fileNode: fileNode, boxWidth: boxWidth, boxHeight: boxHeight, theme: theme),
+               let tex = await loadTexture(img, key: "side|\(theme.name)|\(fileNode.url.path)") {
+                var mat = UnlitMaterial()
+                mat.color = .init(tint: .white, texture: MaterialParameters.Texture(tex))
+                return mat
+            }
         } else {
-            mat.diffuse.contents = NSColor(hex: theme.file.sideColor)
-                ?? NSColor(calibratedRed: 0.06, green: 0.10, blue: 0.08, alpha: 1)
+            if let img = drawFileSideTexture(fileNode: fileNode, boxWidth: boxWidth, boxHeight: boxHeight, theme: theme),
+               let tex = await loadTexture(img, key: "fileside|\(theme.name)|\(fileNode.url.path)") {
+                var mat = UnlitMaterial()
+                mat.color = .init(tint: .white, texture: MaterialParameters.Texture(tex))
+                return mat
+            }
         }
-        mat.lightingModel = .lambert
-        mat.isDoubleSided = false
-        return mat
+        let cg = CGColor.from(hex: theme.file.sideColor) ?? CGColor(srgbRed: 0.06, green: 0.10, blue: 0.08, alpha: 1)
+        return SimpleMaterial(color: rkColor(cg), roughness: 1.0, isMetallic: false)
     }
 
-    private static func makeTopMaterial(fileNode: FileNode, theme: Theme) -> SCNMaterial {
-        let mat = SCNMaterial()
+    private static func makeTopMaterial(fileNode: FileNode, theme: Theme) async -> any Material {
         if fileNode.isDirectory {
-            mat.diffuse.contents = NSColor(hex: theme.directory.topColor)
-            mat.emission.contents = NSColor(hex: theme.directory.topEmission)
-        } else {
-            mat.diffuse.contents = fileTopTexture(for: fileNode, theme: theme)
+            var mat = PhysicallyBasedMaterial()
+            let topCG  = CGColor.from(hex: theme.directory.topColor)    ?? CGColor(srgbRed: 0.18, green: 0.38, blue: 0.82, alpha: 1)
+            let emitCG = CGColor.from(hex: theme.directory.topEmission) ?? CGColor(gray: 0.05, alpha: 1)
+            mat.baseColor      = .init(tint: rkColor(topCG))
+            mat.emissiveColor  = .init(color: rkColor(emitCG))
+            mat.emissiveIntensity = 1.5
+            mat.roughness      = .init(floatLiteral: 1.0)
+            mat.metallic       = .init(floatLiteral: 0.0)
+            return mat
         }
-        mat.lightingModel = .lambert
-        return mat
+        if let img = drawFileTopTexture(fileNode: fileNode, theme: theme),
+           let tex = await loadTexture(img, key: "top|\(theme.name)|\(fileNode.url.path)") {
+            var mat = UnlitMaterial()
+            mat.color = .init(tint: .white, texture: MaterialParameters.Texture(tex))
+            return mat
+        }
+        let cg = CGColor.from(hex: theme.file.topBackground) ?? CGColor(gray: 0.05, alpha: 1)
+        return UnlitMaterial(color: rkColor(cg))
     }
 
-    private static func makeBottomMaterial(theme: Theme) -> SCNMaterial {
-        let mat = SCNMaterial()
-        mat.diffuse.contents = NSColor(hex: theme.scene.bottomFace)
-            ?? NSColor(white: 0.04, alpha: 1)
-        mat.lightingModel = .lambert
-        return mat
+    private static func makeBottomMaterial(theme: Theme) -> any Material {
+        let cg = CGColor.from(hex: theme.scene.bottomFace) ?? CGColor(gray: 0.04, alpha: 1)
+        return SimpleMaterial(color: rkColor(cg), roughness: 1.0, isMetallic: false)
     }
 
-    // MARK: - Side texture (directories)
+    // MARK: - Texture cache
 
-    private static func sideTexture(for fileNode: FileNode, boxWidth: Float, boxHeight: Float, theme: Theme) -> NSImage {
-        let key = "\(theme.name)|\(fileNode.url.path)" as NSString
-        if let cached = sideTextureCache.object(forKey: key) { return cached }
-        let image = drawSideTexture(fileNode: fileNode, boxWidth: boxWidth, boxHeight: boxHeight, theme: theme)
-        sideTextureCache.setObject(image, forKey: key)
-        return image
+    private static func loadTexture(_ image: CGImage, key: String) async -> TextureResource? {
+        let k = key as NSString
+        if let cached = textureCache.object(forKey: k) { return cached }
+        guard let tex = try? await TextureResource(image: image, withName: key,
+                                                   options: .init(semantic: .color)) else { return nil }
+        textureCache.setObject(tex, forKey: k)
+        return tex
     }
 
-    private static func drawSideTexture(fileNode: FileNode, boxWidth: Float, boxHeight: Float, theme: Theme) -> NSImage {
-        let t = theme.directory
-        let w: CGFloat = 512
-        let h: CGFloat = max(64, w * CGFloat(boxHeight) / CGFloat(boxWidth))
-        let image = NSImage(size: NSSize(width: w, height: h))
-        image.lockFocus()
-        defer { image.unlockFocus() }
+    // MARK: - Cross-platform color helper
 
-        (NSColor(hex: t.sideBackground) ?? .black).setFill()
-        NSRect(origin: .zero, size: NSSize(width: w, height: h)).fill()
+    private static func rkColor(_ cg: CGColor) -> Material.Color {
+        #if os(macOS)
+        return Material.Color(cgColor: cg) ?? .black
+        #else
+        return Material.Color(cgColor: cg)
+        #endif
+    }
 
-        (NSColor(hex: t.sideBorder) ?? .blue).setStroke()
-        let border = NSBezierPath(roundedRect: NSRect(x: 2, y: 2, width: w - 4, height: h - 4), xRadius: 4, yRadius: 4)
-        border.lineWidth = 2
-        border.stroke()
+    // MARK: - Side texture (directories) — Core Graphics
 
-        let truncPara = NSMutableParagraphStyle()
-        truncPara.lineBreakMode = .byTruncatingTail
+    private static func drawSideTexture(fileNode: FileNode, boxWidth: Float, boxHeight: Float, theme: Theme) -> CGImage? {
+        let t  = theme.directory
+        let w  = 512
+        let h  = max(64, Int(CGFloat(w) * CGFloat(boxHeight) / CGFloat(boxWidth)))
+        let wf = CGFloat(w), hf = CGFloat(h)
+        guard let ctx = bitmapContext(width: w, height: h) else { return nil }
 
-        // Name
-        let nameAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.boldSystemFont(ofSize: 36),
-            .foregroundColor: NSColor(hex: t.nameText) ?? .white,
-            .paragraphStyle: truncPara
-        ]
-        NSAttributedString(string: fileNode.name, attributes: nameAttrs)
-            .draw(in: NSRect(x: 20, y: h - 68, width: w - 40, height: 48))
+        ctx.setFillColor(CGColor.from(hex: t.sideBackground) ?? CGColor(gray: 0, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: wf, height: hf))
 
-        // Subtitle
+        stroke(ctx: ctx, rect: CGRect(x: 2, y: 2, width: wf - 4, height: hf - 4), radius: 4,
+               color: CGColor.from(hex: t.sideBorder) ?? CGColor(srgbRed: 0, green: 0, blue: 1, alpha: 1), lineWidth: 2)
+
+        drawLine(ctx: ctx, text: fileNode.name, font: sysFontBold(36),
+                 color: CGColor.from(hex: t.nameText) ?? CGColor(gray: 1, alpha: 1),
+                 x: 20, y: hf - 52, maxWidth: wf - 40, truncate: true)
+
         var subtitle = "\(fileNode.childCount) items"
         let parts: [String] = [
             fileNode.folderCount > 0 ? "\(fileNode.folderCount) folder\(fileNode.folderCount == 1 ? "" : "s")" : nil,
-            fileNode.fileCount > 0   ? "\(fileNode.fileCount) file\(fileNode.fileCount == 1 ? "" : "s")"       : nil
+            fileNode.fileCount   > 0 ? "\(fileNode.fileCount) file\(fileNode.fileCount == 1 ? "" : "s")"       : nil
         ].compactMap { $0 }
         if !parts.isEmpty { subtitle += "  ·  " + parts.joined(separator: "  ·  ") }
-        let subAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 20, weight: .light),
-            .foregroundColor: NSColor(hex: t.subtitleText) ?? .gray
-        ]
-        NSAttributedString(string: subtitle, attributes: subAttrs)
-            .draw(at: NSPoint(x: 20, y: h - 100))
 
-        // Divider
-        NSColor(white: 0.25, alpha: 1).setStroke()
-        let line = NSBezierPath()
-        line.move(to: NSPoint(x: 20, y: h - 114))
-        line.line(to: NSPoint(x: w - 20, y: h - 114))
-        line.lineWidth = 0.5
-        line.stroke()
+        drawLine(ctx: ctx, text: subtitle, font: sysFont(20),
+                 color: CGColor.from(hex: t.subtitleText) ?? CGColor(gray: 0.55, alpha: 1),
+                 x: 20, y: hf - 100, maxWidth: wf - 40, truncate: false)
 
-        // Children list
-        let itemAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedSystemFont(ofSize: 18, weight: .regular),
-            .foregroundColor: NSColor(hex: t.childText) ?? .lightGray,
-            .paragraphStyle: truncPara
-        ]
-        let moreAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 15, weight: .light),
-            .foregroundColor: NSColor(hex: t.moreText) ?? .gray
-        ]
+        ctx.setStrokeColor(CGColor(gray: 0.25, alpha: 1)); ctx.setLineWidth(0.5)
+        ctx.move(to: CGPoint(x: 20, y: hf - 114)); ctx.addLine(to: CGPoint(x: wf - 20, y: hf - 114)); ctx.strokePath()
 
-        let rowHeight: CGFloat = 30
-        let listTop: CGFloat = h - 142
-        let maxRows = max(0, Int((listTop - 20) / rowHeight))
-        var y: CGFloat = listTop
+        let rowH: CGFloat = 30, listTop: CGFloat = hf - 142
+        let maxRows = max(0, Int((listTop - 20) / rowH))
+        var y = listTop
         for item in fileNode.topChildren.prefix(maxRows) {
-            NSAttributedString(string: item, attributes: itemAttrs)
-                .draw(in: NSRect(x: 24, y: y, width: w - 48, height: 24))
-            y -= rowHeight
+            drawLine(ctx: ctx, text: item, font: sysFontMono(18),
+                     color: CGColor.from(hex: t.childText) ?? CGColor(gray: 0.8, alpha: 1),
+                     x: 24, y: y, maxWidth: wf - 48, truncate: true)
+            y -= rowH
         }
         if fileNode.topChildren.count > maxRows && maxRows > 0 {
-            NSAttributedString(string: "+ \(fileNode.topChildren.count - maxRows) more…", attributes: moreAttrs)
-                .draw(at: NSPoint(x: 24, y: y))
+            drawLine(ctx: ctx, text: "+ \(fileNode.topChildren.count - maxRows) more…", font: sysFont(15),
+                     color: CGColor.from(hex: t.moreText) ?? CGColor(gray: 0.4, alpha: 1),
+                     x: 24, y: y, maxWidth: wf - 48, truncate: false)
         }
-
-        return image
+        return ctx.makeImage()
     }
 
-    // MARK: - Top texture (files)
+    // MARK: - Side texture (files) — Core Graphics
 
-    private static func fileTopTexture(for fileNode: FileNode, theme: Theme) -> NSImage {
-        let key = "\(theme.name)|\(fileNode.url.path)" as NSString
-        if let cached = fileTopTextureCache.object(forKey: key) { return cached }
-        let image = drawFileTopTexture(fileNode: fileNode, theme: theme)
-        fileTopTextureCache.setObject(image, forKey: key)
-        return image
-    }
-
-    private static func drawFileTopTexture(fileNode: FileNode, theme: Theme) -> NSImage {
+    private static func drawFileSideTexture(fileNode: FileNode, boxWidth: Float, boxHeight: Float, theme: Theme) -> CGImage? {
         let t = theme.file
-        let w: CGFloat = 512
-        let h: CGFloat = 512
-        let image = NSImage(size: NSSize(width: w, height: h))
-        image.lockFocus()
-        defer { image.unlockFocus() }
+        let w = 512
+        let h = max(32, Int(CGFloat(w) * CGFloat(boxHeight) / CGFloat(boxWidth)))
+        let wf = CGFloat(w), hf = CGFloat(h)
+        guard let ctx = bitmapContext(width: w, height: h) else { return nil }
 
-        (NSColor(hex: t.topBackground) ?? .black).setFill()
-        NSRect(origin: .zero, size: NSSize(width: w, height: h)).fill()
+        ctx.setFillColor(CGColor.from(hex: t.sideColor) ?? CGColor(gray: 0.05, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: wf, height: hf))
 
-        (NSColor(hex: t.topBorder) ?? .green).setStroke()
-        NSBezierPath(roundedRect: NSRect(x: 4, y: 4, width: w - 8, height: h - 8), xRadius: 6, yRadius: 6)
-            .apply { $0.lineWidth = 3; $0.stroke() }
+        stroke(ctx: ctx, rect: CGRect(x: 1, y: 1, width: wf - 2, height: hf - 2), radius: 3,
+               color: CGColor.from(hex: t.topBorder) ?? CGColor(srgbRed: 0, green: 1, blue: 0, alpha: 0.5), lineWidth: 1.5)
 
-        let para = NSMutableParagraphStyle()
-        para.lineBreakMode = .byTruncatingMiddle
+        let fontSize = max(10, CGFloat(h) * 0.52)
+        let textY    = (hf - fontSize) * 0.45
 
-        // Extension badge
         let ext = fileNode.url.pathExtension.uppercased()
         if !ext.isEmpty {
-            let badgeColor = NSColor(hex: t.badgeText) ?? .green
-            let badgeAttrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.monospacedSystemFont(ofSize: 22, weight: .bold),
-                .foregroundColor: badgeColor
-            ]
-            let badgeStr = NSAttributedString(string: ext, attributes: badgeAttrs)
-            let badgeSize = badgeStr.size()
-            let pad: CGFloat = 10
-            let badgeRect = NSRect(
-                x: w - badgeSize.width - pad * 2 - 12,
-                y: h - badgeSize.height - 20,
-                width: badgeSize.width + pad * 2,
-                height: badgeSize.height + 6
-            )
-            (NSColor(hex: t.badgeBackground) ?? .darkGray).setFill()
-            NSBezierPath(roundedRect: badgeRect, xRadius: 5, yRadius: 5).fill()
-            badgeColor.withAlphaComponent(0.7).setStroke()
-            NSBezierPath(roundedRect: badgeRect, xRadius: 5, yRadius: 5).stroke()
-            badgeStr.draw(at: NSPoint(x: badgeRect.minX + pad, y: badgeRect.minY + 3))
+            let badgeFont  = sysFontMono(fontSize * 0.75)
+            let badgeLine  = ctLine(text: ext, font: badgeFont, color: CGColor.from(hex: t.badgeText) ?? CGColor(gray: 1, alpha: 1))
+            let bounds     = CTLineGetBoundsWithOptions(badgeLine, [])
+            let pad: CGFloat = 5
+            let bRect = CGRect(x: wf - bounds.width - pad * 2 - 10,
+                               y: (hf - bounds.height) * 0.5,
+                               width: bounds.width + pad * 2,
+                               height: bounds.height + 3)
+            let bPath = CGPath(roundedRect: bRect, cornerWidth: 3, cornerHeight: 3, transform: nil)
+            ctx.addPath(bPath)
+            ctx.setFillColor(CGColor.from(hex: t.badgeBackground) ?? CGColor(gray: 0.2, alpha: 1))
+            ctx.fillPath()
+            ctx.textPosition = CGPoint(x: bRect.minX + pad, y: bRect.minY + 2)
+            CTLineDraw(badgeLine, ctx)
+            drawLine(ctx: ctx, text: fileNode.name, font: sysFontBold(fontSize),
+                     color: CGColor.from(hex: t.nameText) ?? CGColor(gray: 1, alpha: 1),
+                     x: 10, y: textY, maxWidth: bRect.minX - 16, truncate: true)
+        } else {
+            drawLine(ctx: ctx, text: fileNode.name, font: sysFontBold(fontSize),
+                     color: CGColor.from(hex: t.nameText) ?? CGColor(gray: 1, alpha: 1),
+                     x: 10, y: textY, maxWidth: wf - 20, truncate: true)
         }
-
-        // File name
-        let nameAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.boldSystemFont(ofSize: 32),
-            .foregroundColor: NSColor(hex: t.nameText) ?? .white,
-            .paragraphStyle: para
-        ]
-        NSAttributedString(string: fileNode.name, attributes: nameAttrs)
-            .draw(in: NSRect(x: 20, y: h - 80, width: w - 40, height: 44))
-
-        // Divider
-        NSColor(white: 0.25, alpha: 1).setStroke()
-        let div = NSBezierPath()
-        div.move(to: NSPoint(x: 20, y: h - 96))
-        div.line(to: NSPoint(x: w - 20, y: h - 96))
-        div.lineWidth = 0.5
-        div.stroke()
-
-        // File type
-        let typeLabel = fileTypeLabel(ext: ext)
-        let typeAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 20, weight: .light),
-            .foregroundColor: NSColor(hex: t.typeText) ?? .green
-        ]
-        NSAttributedString(string: typeLabel, attributes: typeAttrs)
-            .draw(at: NSPoint(x: 20, y: h - 128))
-
-        // File size
-        let sizeAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedSystemFont(ofSize: 24, weight: .medium),
-            .foregroundColor: NSColor(hex: t.sizeText) ?? .lightGray
-        ]
-        NSAttributedString(string: fileSizeString(url: fileNode.url), attributes: sizeAttrs)
-            .draw(at: NSPoint(x: 20, y: h - 180))
-
-        // Modified date
-        if let mod = try? fileNode.url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate {
-            let fmt = DateFormatter()
-            fmt.dateStyle = .medium
-            fmt.timeStyle = .short
-            let dateAttrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 16, weight: .light),
-                .foregroundColor: NSColor(hex: t.dateText) ?? .gray
-            ]
-            NSAttributedString(string: "Modified \(fmt.string(from: mod))", attributes: dateAttrs)
-                .draw(at: NSPoint(x: 20, y: h - 216))
-        }
-
-        return image
+        return ctx.makeImage()
     }
 
-    // MARK: - Helpers
+    // MARK: - Top texture (files) — Core Graphics
+
+    private static func drawFileTopTexture(fileNode: FileNode, theme: Theme) -> CGImage? {
+        let t = theme.file
+        let w = 512, h = 512
+        let wf = CGFloat(w), hf = CGFloat(h)
+        guard let ctx = bitmapContext(width: w, height: h) else { return nil }
+
+        ctx.setFillColor(CGColor.from(hex: t.topBackground) ?? CGColor(gray: 0, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: wf, height: hf))
+
+        stroke(ctx: ctx, rect: CGRect(x: 4, y: 4, width: wf - 8, height: hf - 8), radius: 6,
+               color: CGColor.from(hex: t.topBorder) ?? CGColor(srgbRed: 0, green: 1, blue: 0, alpha: 1), lineWidth: 3)
+
+        let ext = fileNode.url.pathExtension.uppercased()
+        if !ext.isEmpty {
+            let badgeColor = CGColor.from(hex: t.badgeText) ?? CGColor(srgbRed: 0, green: 1, blue: 0, alpha: 1)
+            let badgeLine  = ctLine(text: ext, font: sysFontMono(22), color: badgeColor)
+            let bounds     = CTLineGetBoundsWithOptions(badgeLine, [])
+            let pad: CGFloat = 10
+            let bRect = CGRect(x: wf - bounds.width - pad * 2 - 12, y: hf - bounds.height - 20,
+                               width: bounds.width + pad * 2, height: bounds.height + 6)
+            let bPath = CGPath(roundedRect: bRect, cornerWidth: 5, cornerHeight: 5, transform: nil)
+            ctx.addPath(bPath); ctx.setFillColor(CGColor.from(hex: t.badgeBackground) ?? CGColor(gray: 0.2, alpha: 1)); ctx.fillPath()
+            ctx.addPath(bPath); ctx.setStrokeColor(badgeColor.copy(alpha: 0.7) ?? badgeColor); ctx.setLineWidth(1); ctx.strokePath()
+            ctx.textPosition = CGPoint(x: bRect.minX + pad, y: bRect.minY + 3); CTLineDraw(badgeLine, ctx)
+        }
+
+        drawLine(ctx: ctx, text: fileNode.name, font: sysFontBold(32),
+                 color: CGColor.from(hex: t.nameText) ?? CGColor(gray: 1, alpha: 1),
+                 x: 20, y: hf - 60, maxWidth: wf - 40, truncate: true)
+
+        ctx.setStrokeColor(CGColor(gray: 0.25, alpha: 1)); ctx.setLineWidth(0.5)
+        ctx.move(to: CGPoint(x: 20, y: hf - 96)); ctx.addLine(to: CGPoint(x: wf - 20, y: hf - 96)); ctx.strokePath()
+
+        drawLine(ctx: ctx, text: fileTypeLabel(ext: ext), font: sysFont(20),
+                 color: CGColor.from(hex: t.typeText) ?? CGColor(srgbRed: 0, green: 1, blue: 0, alpha: 1),
+                 x: 20, y: hf - 128, maxWidth: wf - 40, truncate: false)
+        drawLine(ctx: ctx, text: fileSizeString(url: fileNode.url), font: sysFontMono(24),
+                 color: CGColor.from(hex: t.sizeText) ?? CGColor(gray: 0.75, alpha: 1),
+                 x: 20, y: hf - 180, maxWidth: wf - 40, truncate: false)
+
+        if let mod = try? fileNode.url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate {
+            let fmt = DateFormatter(); fmt.dateStyle = .medium; fmt.timeStyle = .short
+            drawLine(ctx: ctx, text: "Modified \(fmt.string(from: mod))", font: sysFont(16),
+                     color: CGColor.from(hex: t.dateText) ?? CGColor(gray: 0.4, alpha: 1),
+                     x: 20, y: hf - 216, maxWidth: wf - 40, truncate: false)
+        }
+        return ctx.makeImage()
+    }
+
+    // MARK: - Core Graphics / Core Text helpers
+
+    private static func bitmapContext(width: Int, height: Int) -> CGContext? {
+        CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                  space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+    }
+
+    private static func stroke(ctx: CGContext, rect: CGRect, radius: CGFloat, color: CGColor, lineWidth: CGFloat) {
+        ctx.addPath(CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil))
+        ctx.setStrokeColor(color); ctx.setLineWidth(lineWidth); ctx.strokePath()
+    }
+
+    private static func ctLine(text: String, font: CTFont, color: CGColor) -> CTLine {
+        let attrs: [CFString: Any] = [kCTFontAttributeName: font, kCTForegroundColorAttributeName: color]
+        return CTLineCreateWithAttributedString(CFAttributedStringCreate(nil, text as CFString, attrs as CFDictionary)!)
+    }
+
+    private static func drawLine(ctx: CGContext, text: String, font: CTFont, color: CGColor,
+                                  x: CGFloat, y: CGFloat, maxWidth: CGFloat, truncate: Bool) {
+        let line = ctLine(text: text, font: font, color: color)
+        let drawn = truncate ? (CTLineCreateTruncatedLine(line, Double(maxWidth), .end, nil) ?? line) : line
+        ctx.textPosition = CGPoint(x: x, y: y); CTLineDraw(drawn, ctx)
+    }
+
+    private static func sysFontBold(_ size: CGFloat) -> CTFont {
+        CTFontCreateUIFontForLanguage(.emphasizedSystem, size, nil) ?? CTFontCreateWithName("Helvetica-Bold" as CFString, size, nil)
+    }
+    private static func sysFont(_ size: CGFloat) -> CTFont {
+        CTFontCreateUIFontForLanguage(.user, size, nil) ?? CTFontCreateWithName("Helvetica" as CFString, size, nil)
+    }
+    private static func sysFontMono(_ size: CGFloat) -> CTFont {
+        CTFontCreateUIFontForLanguage(.userFixedPitch, size, nil) ?? CTFontCreateWithName("Menlo-Regular" as CFString, size, nil)
+    }
+
+    // MARK: - File helpers
 
     private static func fileTypeLabel(ext: String) -> String {
         guard !ext.isEmpty else { return "Document" }
@@ -312,8 +330,4 @@ final class VolumeNode: SCNNode {
         }
         return "\(bytes) bytes"
     }
-}
-
-private extension NSBezierPath {
-    func apply(_ block: (NSBezierPath) -> Void) { block(self) }
 }

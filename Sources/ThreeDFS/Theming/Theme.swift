@@ -1,4 +1,8 @@
+import Foundation
+import CoreGraphics
+#if os(macOS)
 import AppKit
+#endif
 
 // MARK: - Theme model
 
@@ -39,6 +43,32 @@ struct Theme: Codable, Identifiable, Hashable {
     }
 }
 
+// MARK: - CGColor helper
+
+extension CGColor {
+    static func from(hex: String) -> CGColor? {
+        var s = hex.trimmingCharacters(in: .whitespaces)
+        if s.hasPrefix("#") { s = String(s.dropFirst()) }
+        guard s.count == 6 || s.count == 8 else { return nil }
+        var value: UInt64 = 0
+        guard Scanner(string: s).scanHexInt64(&value) else { return nil }
+        let r, g, b, a: CGFloat
+        if s.count == 6 {
+            r = CGFloat((value >> 16) & 0xff) / 255
+            g = CGFloat((value >> 8)  & 0xff) / 255
+            b = CGFloat(value         & 0xff) / 255
+            a = 1
+        } else {
+            r = CGFloat((value >> 24) & 0xff) / 255
+            g = CGFloat((value >> 16) & 0xff) / 255
+            b = CGFloat((value >> 8)  & 0xff) / 255
+            a = CGFloat(value         & 0xff) / 255
+        }
+        return CGColor(srgbRed: r, green: g, blue: b, alpha: a)
+    }
+}
+
+#if os(macOS)
 // MARK: - NSColor helper
 
 extension NSColor {
@@ -63,6 +93,7 @@ extension NSColor {
         self.init(calibratedRed: r, green: g, blue: b, alpha: a)
     }
 }
+#endif
 
 // MARK: - Built-in themes
 

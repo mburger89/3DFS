@@ -1,6 +1,8 @@
 import Foundation
-import AppKit
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 @MainActor
 final class ThemeManager: ObservableObject {
@@ -49,6 +51,7 @@ final class ThemeManager: ObservableObject {
         }
     }
 
+#if os(macOS)
     func exportTheme(_ theme: Theme) {
         let alert = NSAlert()
         alert.messageText = "Export \"\(theme.name)\""
@@ -112,6 +115,7 @@ final class ThemeManager: ObservableObject {
         lines.append("")
         return lines.joined(separator: "\n")
     }
+#endif
 
     private let selectionKey = "com.maxburger.threedfs.themeID"
 
@@ -122,6 +126,7 @@ final class ThemeManager: ObservableObject {
 
     // MARK: - Load / import
 
+#if os(macOS)
     /// Import a theme from a .json or .yaml/.yml file chosen by the user.
     func importTheme() {
         let panel = NSOpenPanel()
@@ -148,6 +153,7 @@ final class ThemeManager: ObservableObject {
             alert.runModal()
         }
     }
+#endif
 
     // MARK: - Private
 

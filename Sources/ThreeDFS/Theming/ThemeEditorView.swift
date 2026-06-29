@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 import AppKit
 
@@ -104,7 +105,7 @@ struct ThemeEditorView: View {
                     Image(systemName: "trash").frame(width: 28, height: 28)
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(isBuiltIn ? .secondary.opacity(0.3) : .red.opacity(0.8))
+                .foregroundStyle(isBuiltIn ? Color.secondary.opacity(0.3) : Color.red.opacity(0.8))
                 .disabled(isBuiltIn)
                 .help(isBuiltIn ? "Built-in themes cannot be deleted" : "Delete theme")
             }
@@ -149,7 +150,7 @@ struct ThemeEditorView: View {
                             .font(.system(size: 15, weight: .semibold))
                         Text("Built-in — duplicate to edit")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
                     Spacer()
                     Button("Duplicate to Edit") { duplicateCurrent() }
@@ -216,7 +217,7 @@ struct ThemeEditorView: View {
         VStack(alignment: .leading, spacing: 0) {
             Text(title)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .padding(.leading, 20)
                 .padding(.top, 16)
                 .padding(.bottom, 6)
@@ -236,7 +237,7 @@ struct ThemeEditorView: View {
 
             Text(currentHex(kp).uppercased())
                 .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .frame(width: 90, alignment: .leading)
 
             Spacer()
@@ -340,3 +341,4 @@ private struct NameField: View {
         selectedName = trimmed
     }
 }
+#endif

@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 import AppKit
 
@@ -59,3 +60,4 @@ final class FullDiskAccessHelper: ObservableObject {
         }
     }
 }
+#endif

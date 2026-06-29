@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    name: Build & Release
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.app/Contents/Developer
+
+      - name: Archive
+        run: |
+          xcodebuild archive \
+            -project 3DFS.xcodeproj \
+            -scheme 3DFS \
+            -configuration Release \
+            -archivePath "$RUNNER_TEMP/3DFS.xcarchive" \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=NO
+
+      - name: Export app
+        run: |
+          cp -R \
+            "$RUNNER_TEMP/3DFS.xcarchive/Products/Applications/3DFS.app" \
+            "$RUNNER_TEMP/3DFS.app"
+
+      - name: Zip
+        run: |
+          cd "$RUNNER_TEMP"
+          ditto -c -k --sequesterRsrc --keepParent 3DFS.app 3DFS-${{ github.ref_name }}.zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ runner.temp }}/3DFS-${{ github.ref_name }}.zip
+          generate_release_notes: true

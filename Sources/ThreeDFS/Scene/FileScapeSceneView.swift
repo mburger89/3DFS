@@ -1,96 +1,113 @@
 import SwiftUI
-import SceneKit
+import RealityKit
+import Combine
 
-struct FileScapeSceneView: NSViewRepresentable {
+struct FileScapeSceneView: View {
     @ObservedObject var navigator: FileNavigator
     @ObservedObject var themeManager: ThemeManager = .shared
+    @StateObject private var scene = FileSystemSceneManager()
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(navigator: navigator)
+    // Gesture tracking state
+    @State private var lastDragLocation: CGPoint?
+    @State private var lastMagnification: CGFloat = 1.0
+
+    #if os(macOS)
+    @State private var keysDown: Set<KeyEquivalent> = []
+    @FocusState private var isFocused: Bool
+    private let wasdTimer = Timer.publish(every: 1 / 60.0, on: .main, in: .common).autoconnect()
+    #endif
+
+    var body: some View {
+        RealityView { [scene] content in
+            scene.setup()
+            content.add(scene.rootEntity)
+            #if !os(visionOS)
+            content.add(scene.cameraEntity)
+            #endif
+        }
+        .task(id: "\(navigator.epoch)|\(themeManager.current.name)") {
+            await scene.loadGrid(
+                navigator.currentChildren,
+                animated: scene.gridLoadCount > 0,
+                theme: themeManager.current
+            )
+        }
+        .gesture(dragGesture)
+        .simultaneousGesture(magnifyGesture)
+        .simultaneousGesture(tapGesture)
+        #if os(macOS)
+        .focusable()
+        .focused($isFocused)
+        .onAppear { isFocused = true }
+        .onKeyPress(phases: [.down, .up]) { press in
+            if press.phase == .down { keysDown.insert(press.key) }
+            else                    { keysDown.remove(press.key) }
+            return .handled
+        }
+        .onReceive(wasdTimer) { _ in handleWASD() }
+        #endif
     }
 
-    func makeNSView(context: Context) -> KeyCaptureSCNView {
-        let scnView = KeyCaptureSCNView()
-        let scene = FileSystemScene()
-        scnView.scene = scene
-        scnView.backgroundColor = NSColor(calibratedRed: 0.03, green: 0.04, blue: 0.07, alpha: 1)
-        scnView.antialiasingMode = .multisampling4X
-        scnView.showsStatistics = false
-        scnView.allowsCameraControl = false
-        scnView.isPlaying = true
-        scnView.preferredFramesPerSecond = 60
+    // MARK: - Gestures
 
-        let delegate = context.coordinator
-        scnView.delegate = delegate
-        context.coordinator.scnView = scnView
-
-        scnView.onVolumeClicked = { [weak coordinator = context.coordinator] volume in
-            coordinator?.handleClick(volume)
-        }
-
-        return scnView
-    }
-
-    func updateNSView(_ nsView: KeyCaptureSCNView, context: Context) {
-        let coord = context.coordinator
-        let themeChanged = coord.loadedTheme != themeManager.current
-        guard coord.loadedEpoch != navigator.epoch || themeChanged else { return }
-        let isFirstLoad = coord.loadedEpoch == nil
-        coord.loadedEpoch = navigator.epoch
-        coord.loadedTheme = themeManager.current
-        coord.loadScene(children: navigator.currentChildren, animated: !isFirstLoad && !themeChanged)
-    }
-
-    // MARK: - Coordinator
-
-    @MainActor
-    final class Coordinator: NSObject, @preconcurrency SCNSceneRendererDelegate {
-        let navigator: FileNavigator
-        weak var scnView: KeyCaptureSCNView?
-        var loadedEpoch: UUID? = nil
-        var loadedTheme: Theme? = nil
-
-        // Key codes: W=13, S=1, A=0, D=2
-        private let moveSpeed: Float = 0.08
-
-        init(navigator: FileNavigator) {
-            self.navigator = navigator
-        }
-
-        func loadScene(children: [FileNode], animated: Bool) {
-            guard let scene = scnView?.scene as? FileSystemScene else { return }
-            scene.loadGrid(children, animated: animated, theme: ThemeManager.shared.current)
-        }
-
-        func handleClick(_ volume: VolumeNode) {
-            guard volume.fileNode.isDirectory else { return }
-            Task { @MainActor in
-                await navigator.navigateTo(volume.fileNode)
+    private var dragGesture: some Gesture {
+        DragGesture()
+            .onChanged { value in
+                if let last = lastDragLocation {
+                    let dx = Float(value.location.x - last.x)
+                    let dy = Float(value.location.y - last.y)
+                    // UIKit / SwiftUI y-axis grows downward: invert Y so dragging up raises elevation
+                    scene.camera.orbit(deltaX: dx, deltaY: -dy)
+                    scene.applyCamera()
+                }
+                lastDragLocation = value.location
             }
-        }
-
-        // MARK: - Per-frame WASD: pan the camera's focus point
-
-        func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
-            guard let scnView, let scene = scnView.scene as? FileSystemScene else { return }
-            let keys = scnView.keysDown
-            guard !keys.isEmpty else { return }
-
-            // Key codes: W=13, S=1, A=0, D=2, Q=12, E=14
-            var panX: Float = 0
-            var panY: Float = 0
-
-            if keys.contains(13) { panY += moveSpeed }   // W — pan forward
-            if keys.contains(1)  { panY -= moveSpeed }   // S — pan back
-            if keys.contains(0)  { panX -= moveSpeed }   // A — pan left
-            if keys.contains(2)  { panX += moveSpeed }   // D — pan right
-            if keys.contains(12) { scene.camera.zoom(by: -0.02) }   // Q — zoom in
-            if keys.contains(14) { scene.camera.zoom(by:  0.02) }   // E — zoom out
-
-            if panX != 0 || panY != 0 {
-                scene.camera.pan(deltaX: panX * 12, deltaY: panY * 12)
-            }
-            scene.camera.apply(to: scene.cameraNode)
-        }
+            .onEnded { _ in lastDragLocation = nil }
     }
+
+    private var magnifyGesture: some Gesture {
+        MagnifyGesture()
+            .onChanged { value in
+                let delta = Float(value.magnification / lastMagnification - 1.0)
+                scene.camera.zoom(by: -delta)   // pinch open → zoom in
+                scene.applyCamera()
+                lastMagnification = value.magnification
+            }
+            .onEnded { _ in lastMagnification = 1.0 }
+    }
+
+    private var tapGesture: some Gesture {
+        TapGesture()
+            .targetedToAnyEntity()
+            .onEnded { value in
+                // Walk hierarchy to find VolumeNodeComponent
+                var entity: Entity? = value.entity
+                while let e = entity {
+                    if let comp = e.components[VolumeNodeComponent.self] {
+                        guard comp.fileNode.isDirectory else { return }
+                        Task { @MainActor in await navigator.navigateTo(comp.fileNode) }
+                        return
+                    }
+                    entity = e.parent
+                }
+            }
+    }
+
+    // MARK: - macOS keyboard (WASD / Q / E)
+
+    #if os(macOS)
+    private func handleWASD() {
+        guard !keysDown.isEmpty else { return }
+        let speed: Float = 0.08
+        var panX: Float = 0, panY: Float = 0
+        if keysDown.contains("w") { panY += speed }
+        if keysDown.contains("s") { panY -= speed }
+        if keysDown.contains("a") { panX -= speed }
+        if keysDown.contains("d") { panX += speed }
+        if keysDown.contains("q") { scene.camera.zoom(by: -0.02) }
+        if keysDown.contains("e") { scene.camera.zoom(by:  0.02) }
+        if panX != 0 || panY != 0 { scene.camera.pan(deltaX: panX * 12, deltaY: panY * 12) }
+        scene.applyCamera()
+    }
+    #endif
 }

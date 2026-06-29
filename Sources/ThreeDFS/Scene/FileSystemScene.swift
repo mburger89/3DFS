@@ -1,156 +1,143 @@
-import SceneKit
-import AppKit
+import RealityKit
+import CoreGraphics
+import Foundation
 
 @MainActor
-final class FileSystemScene: SCNScene {
-    private(set) var cameraNode: SCNNode!
-    let camera = CameraController()
-    private var gridContainerNode: SCNNode?
+final class FileSystemSceneManager: ObservableObject {
+    let rootEntity   = Entity()   // grid + lights; on visionOS this is also rotated for orbiting
+    let cameraEntity = Entity()   // PerspectiveCameraComponent (macOS / iOS only)
+    let camera       = CameraController()
+
+    private var gridContainer: Entity?
+    private(set) var gridLoadCount = 0
 
     private let spacing: Float = 2.6
-    private let boxSize: Float  = 1.9
+    private let boxSize:  Float = 1.9
 
-    override init() {
-        super.init()
-        MainActor.assumeIsolated {
-            setupEnvironment()
-            setupCamera()
-            setupLights()
-            setupFloor()
-        }
+    // MARK: - Setup (called once, before adding entities to RealityView content)
+
+    func setup() {
+        setupLights()
+        setupFloor(theme: ThemeManager.shared.current)
+        #if !os(visionOS)
+        cameraEntity.components.set(
+            PerspectiveCameraComponent(near: 0.1, far: 500, fieldOfViewInDegrees: 60)
+        )
+        camera.apply(to: cameraEntity)
+        #endif
     }
 
-    required init?(coder: NSCoder) { fatalError() }
+    // MARK: - Camera
 
-    // MARK: - Setup
-
-    private func setupEnvironment() {
-        applyTheme(ThemeManager.shared.current)
-    }
-
-    func applyTheme(_ theme: Theme) {
-        background.contents = NSColor(hex: theme.scene.background)
-            ?? NSColor(calibratedRed: 0.03, green: 0.04, blue: 0.07, alpha: 1)
-    }
-
-    private func setupCamera() {
-        let cam = SCNCamera()
-        cam.fieldOfView = 60
-        cam.zNear = 0.1
-        cam.zFar = 500
-
-        cameraNode = SCNNode()
-        cameraNode.camera = cam
-        camera.apply(to: cameraNode)
-        rootNode.addChildNode(cameraNode)
-    }
-
-    private func setupLights() {
-        let ambient = SCNLight()
-        ambient.type = .ambient
-        ambient.color = NSColor(white: 0.28, alpha: 1)
-        let ambientNode = SCNNode(); ambientNode.light = ambient
-        rootNode.addChildNode(ambientNode)
-
-        let key = SCNLight()
-        key.type = .directional
-        key.color = NSColor(calibratedRed: 0.9, green: 0.92, blue: 1.0, alpha: 1)
-        key.intensity = 800
-        key.castsShadow = true
-        key.shadowRadius = 4
-        key.shadowColor = NSColor(white: 0, alpha: 0.5)
-        key.shadowMode = .deferred
-        let keyNode = SCNNode(); keyNode.light = key
-        keyNode.eulerAngles = SCNVector3(-Float.pi / 4, Float.pi / 5, 0)
-        rootNode.addChildNode(keyNode)
-
-        let fill = SCNLight()
-        fill.type = .directional
-        fill.color = NSColor(calibratedRed: 0.3, green: 0.4, blue: 0.7, alpha: 1)
-        fill.intensity = 300
-        let fillNode = SCNNode(); fillNode.light = fill
-        fillNode.eulerAngles = SCNVector3(-Float.pi / 6, -Float.pi / 3, 0)
-        rootNode.addChildNode(fillNode)
-    }
-
-    private func setupFloor() {
-        let floor = SCNFloor()
-        floor.reflectivity = 0.08
-        floor.reflectionFalloffEnd = 8
-        let mat = SCNMaterial()
-        mat.diffuse.contents = NSColor(calibratedRed: 0.05, green: 0.06, blue: 0.10, alpha: 1)
-        mat.lightingModel = .lambert
-        floor.materials = [mat]
-        rootNode.addChildNode(SCNNode(geometry: floor))
+    func applyCamera() {
+        #if !os(visionOS)
+        camera.apply(to: cameraEntity)
+        #else
+        camera.applyToWorld(rootEntity)
+        #endif
     }
 
     // MARK: - Grid
 
-    func loadGrid(_ fileNodes: [FileNode], animated: Bool, theme: Theme? = nil, completion: (() -> Void)? = nil) {
-        let theme = theme ?? ThemeManager.shared.current
-        applyTheme(theme)
-        let old = gridContainerNode
-        let newContainer = buildGridNode(fileNodes: fileNodes, theme: theme)
-        newContainer.opacity = 0
-        rootNode.addChildNode(newContainer)
-        gridContainerNode = newContainer
+    func loadGrid(_ fileNodes: [FileNode], animated: Bool, theme: Theme) async {
+        let isAnimated = animated && gridLoadCount > 0
+        gridLoadCount += 1
 
         let cols = gridColumnCount(for: fileNodes.count)
         let rows = fileNodes.isEmpty ? 0 : Int(ceil(Double(fileNodes.count) / Double(cols)))
-        camera.resetForGrid(cols: cols, rows: rows, spacing: spacing)
 
-        SCNTransaction.begin()
-        SCNTransaction.animationDuration = animated ? 0.22 : 0
-        old?.opacity = 0
-        camera.apply(to: cameraNode)
-        SCNTransaction.completionBlock = {
-            old?.removeFromParentNode()
-            SCNTransaction.begin()
-            SCNTransaction.animationDuration = animated ? 0.28 : 0
-            newContainer.opacity = 1
-            SCNTransaction.completionBlock = { completion?() }
-            SCNTransaction.commit()
-        }
-        SCNTransaction.commit()
-    }
-
-    private func buildGridNode(fileNodes: [FileNode], theme: Theme) -> SCNNode {
-        let container = SCNNode()
-        let cols = gridColumnCount(for: fileNodes.count)
-
+        let newContainer = Entity()
         for (i, node) in fileNodes.enumerated() {
             let col = i % cols
             let row = i / cols
-            let volume = VolumeNode(fileNode: node, boxWidth: boxSize, boxDepth: boxSize, theme: theme)
-            volume.position = SCNVector3(Float(col) * spacing, volume.boxHeight / 2, Float(row) * spacing)
-            container.addChildNode(volume)
+            let volume = await VolumeNode.make(fileNode: node, boxWidth: boxSize, boxDepth: boxSize, theme: theme)
+            volume.position = SIMD3<Float>(Float(col) * spacing, volume.boxHeight / 2, Float(row) * spacing)
+            newContainer.addChild(volume)
         }
 
         let totalCols = min(cols, fileNodes.count)
         let totalRows = fileNodes.isEmpty ? 0 : Int(ceil(Double(fileNodes.count) / Double(cols)))
-        container.position = SCNVector3(
-            -Float(totalCols - 1) * spacing / 2,
-            0,
+        newContainer.position = SIMD3<Float>(
+            -Float(totalCols - 1) * spacing / 2, 0,
             -Float(totalRows - 1) * spacing / 2
         )
-        return container
+
+        camera.resetForGrid(cols: cols, rows: rows, spacing: spacing)
+        applyCamera()
+
+        let old = gridContainer
+        gridContainer = newContainer
+
+        if isAnimated {
+            newContainer.components.set(OpacityComponent(opacity: 0))
+        }
+        rootEntity.addChild(newContainer)
+
+        if isAnimated {
+            if let old {
+                old.components.set(OpacityComponent(opacity: 1))
+                let fadeOut = try? AnimationResource.makeActionAnimation(
+                    for: FromToByAction<Float>(to: 0, timing: .linear, isAdditive: false),
+                    duration: 0.22, bindTarget: .opacity)
+                if let fadeOut { old.playAnimation(fadeOut) }
+                Task { try? await Task.sleep(nanoseconds: 300_000_000); old.removeFromParent() }
+            }
+            let fadeIn = try? AnimationResource.makeActionAnimation(
+                for: FromToByAction<Float>(to: 1, timing: .linear, isAdditive: false),
+                duration: 0.28, bindTarget: .opacity)
+            if let fadeIn { newContainer.playAnimation(fadeIn) }
+        } else {
+            old?.removeFromParent()
+        }
     }
+
+    // MARK: - Lights
+
+    private func setupLights() {
+        let ambient = Entity()
+        ambient.components.set(DirectionalLightComponent(color: .white, intensity: 350))
+        rootEntity.addChild(ambient)
+
+        let key = Entity()
+        key.components.set(DirectionalLightComponent(color: .white, intensity: 2500))
+        key.orientation = simd_quatf(angle: -.pi / 4, axis: [1, 0, 0])
+                        * simd_quatf(angle:  .pi / 5, axis: [0, 1, 0])
+        rootEntity.addChild(key)
+
+        let fill = Entity()
+        fill.components.set(DirectionalLightComponent(color: .white, intensity: 400))
+        fill.orientation = simd_quatf(angle: -.pi / 6, axis: [1, 0, 0])
+                         * simd_quatf(angle: -.pi / 3, axis: [0, 1, 0])
+        rootEntity.addChild(fill)
+    }
+
+    // MARK: - Floor
+
+    private func setupFloor(theme: Theme) {
+        let mesh = MeshResource.generateBox(width: 200, height: 0.001, depth: 200, cornerRadius: 0)
+        let cgColor = CGColor.from(hex: theme.scene.bottomFace)
+            ?? CGColor(srgbRed: 0.05, green: 0.06, blue: 0.10, alpha: 1)
+        var mat = UnlitMaterial()
+        #if os(macOS)
+        mat.color = .init(tint: Material.Color(cgColor: cgColor) ?? .black)
+        #else
+        mat.color = .init(tint: Material.Color(cgColor: cgColor))
+        #endif
+        let floor = ModelEntity(mesh: mesh, materials: [mat])
+        floor.position = .zero
+        rootEntity.addChild(floor)
+    }
+
+    // MARK: - Helpers
 
     private func gridColumnCount(for count: Int) -> Int {
         max(1, Int(ceil(sqrt(Double(count)))))
     }
+}
 
-    // MARK: - Hit Testing
-
-    func volumeNode(at point: CGPoint, in view: SCNView) -> VolumeNode? {
-        let hits = view.hitTest(point, options: [.searchMode: SCNHitTestSearchMode.closest.rawValue])
-        for hit in hits {
-            var node: SCNNode? = hit.node
-            while let n = node {
-                if let vol = n as? VolumeNode { return vol }
-                node = n.parent
-            }
-        }
-        return nil
+// Expose boxHeight from VolumeNodeComponent for grid positioning
+private extension ModelEntity {
+    var boxHeight: Float {
+        components[VolumeNodeComponent.self]?.boxHeight ?? 0.12
     }
 }

@@ -1,5 +1,4 @@
 import Foundation
-import AppKit
 
 @MainActor
 final class FileNavigator: ObservableObject {
@@ -11,18 +10,23 @@ final class FileNavigator: ObservableObject {
     /// True until the user has either granted Full Disk Access or chosen a folder.
     @Published private(set) var needsRootSelection = true
 
+    /// Set to true to present the system folder picker from a containing view's .fileImporter.
+    @Published var showingFolderPicker = false
+
     let index = FileSystemIndex()
 
     private var securityScopedRoot: URL?
     private let bookmarkKey = "com.maxburger.threedfs.rootBookmark"
 
     init() {
-        // 1. Full Disk Access — best case: start from home dir, no NSOpenPanel needed.
+#if os(macOS)
+        // 1. Full Disk Access — best case: start from home dir, no picker needed.
         if FullDiskAccessHelper.check() {
             startFromHome()
             return
         }
-        // 2. Saved security-scoped bookmark from a previous NSOpenPanel selection.
+#endif
+        // 2. Saved bookmark from a previous selection.
         if let data = UserDefaults.standard.data(forKey: bookmarkKey),
            let url = resolveBookmark(data) {
             securityScopedRoot = url
@@ -36,12 +40,10 @@ final class FileNavigator: ObservableObject {
         // 3. Otherwise needsRootSelection stays true → WelcomeView is shown.
     }
 
-    // MARK: - Full Disk Access path
+    // MARK: - Full Disk Access path (macOS only)
 
-    /// Called when the user grants FDA while WelcomeView is showing.
-    func useFullDiskAccess() {
-        startFromHome()
-    }
+#if os(macOS)
+    func useFullDiskAccess() { startFromHome() }
 
     private func startFromHome() {
         let home = FileManager.default.homeDirectoryForCurrentUser
@@ -52,6 +54,7 @@ final class FileNavigator: ObservableObject {
             await navigateTo(FileNode(url: home))
         }
     }
+#endif
 
     // MARK: - Navigation
 
@@ -83,21 +86,14 @@ final class FileNavigator: ObservableObject {
 
     var canGoBack: Bool { path.count > 1 }
 
-    // MARK: - Folder picker (NSOpenPanel fallback)
+    // MARK: - Folder picker
 
-    func pickFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Choose Root"
-        panel.message = "Choose a folder for 3DFS to explore"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        adoptRoot(url)
-    }
+    /// Signals the containing view to present the system folder picker via .fileImporter.
+    func pickFolder() { showingFolderPicker = true }
 
     func adoptRoot(_ url: URL) {
-        // Persist a security-scoped bookmark so access survives app restarts.
+        // Persist a bookmark so access survives app restarts.
+#if os(macOS)
         if let data = try? url.bookmarkData(
             options: .withSecurityScope,
             includingResourceValuesForKeys: nil,
@@ -105,11 +101,14 @@ final class FileNavigator: ObservableObject {
         ) {
             UserDefaults.standard.set(data, forKey: bookmarkKey)
         }
-
+#else
+        if let data = try? url.bookmarkData() {
+            UserDefaults.standard.set(data, forKey: bookmarkKey)
+        }
+#endif
         securityScopedRoot?.stopAccessingSecurityScopedResource()
         securityScopedRoot = url
         _ = url.startAccessingSecurityScopedResource()
-
         path = []
         needsRootSelection = false
         Task {
@@ -122,16 +121,27 @@ final class FileNavigator: ObservableObject {
 
     private func resolveBookmark(_ data: Data) -> URL? {
         var isStale = false
+#if os(macOS)
         guard let url = try? URL(
             resolvingBookmarkData: data,
             options: .withSecurityScope,
             relativeTo: nil,
             bookmarkDataIsStale: &isStale
         ) else { return nil }
-
         if isStale, let fresh = try? url.bookmarkData(options: .withSecurityScope) {
             UserDefaults.standard.set(fresh, forKey: bookmarkKey)
         }
+#else
+        guard let url = try? URL(
+            resolvingBookmarkData: data,
+            options: [],
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        ) else { return nil }
+        if isStale, let fresh = try? url.bookmarkData() {
+            UserDefaults.standard.set(fresh, forKey: bookmarkKey)
+        }
+#endif
         return url
     }
 }
