@@ -167,10 +167,6 @@ private struct AccessCard: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, minHeight: 180, alignment: .topLeading)
-#if os(macOS)
         .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
-#else
-        .background(.regularMaterial, in: .rect(cornerRadius: 16))
-#endif
     }
 }

@@ -37,10 +37,6 @@ struct BreadcrumbBar: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
         }
-#if os(macOS)
         .glassEffect(.regular, in: .rect)
-#else
-        .background(.ultraThinMaterial)
-#endif
     }
 }

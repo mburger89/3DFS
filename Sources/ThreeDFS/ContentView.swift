@@ -57,11 +57,7 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
         }
         .padding(24)
-#if os(macOS)
         .glassEffect(.regular, in: .rect(cornerRadius: 16))
-#else
-        .background(.regularMaterial, in: .rect(cornerRadius: 16))
-#endif
     }
 
     private var loadingOverlay: some View {
@@ -74,11 +70,7 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(width: 110, height: 80)
-#if os(macOS)
         .glassEffect(.regular, in: .rect(cornerRadius: 16))
-#else
-        .background(.regularMaterial, in: .rect(cornerRadius: 16))
-#endif
     }
 }
 
@@ -89,6 +81,9 @@ private struct Toolbar: View {
     @Binding var showBreadcrumbs: Bool
     @ObservedObject private var themeManager: ThemeManager = .shared
     @Environment(\.openWindow) private var openWindow
+    @State private var showingThemeImporter = false
+    @State private var showingImportError = false
+    @State private var importError: String = ""
 
     var body: some View {
         HStack(spacing: 8) {
@@ -151,10 +146,8 @@ private struct Toolbar: View {
                         }
                     }
                 }
-#if os(macOS)
                 Divider()
-                Button("Import Theme…") { themeManager.importTheme() }
-#endif
+                Button("Import Theme…") { showingThemeImporter = true }
                 Divider()
                 Button("Theme Editor…") { openWindow(id: "theme-editor") }
             } label: {
@@ -183,10 +176,25 @@ private struct Toolbar: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
-#if os(macOS)
         .glassEffect(.regular.interactive(), in: .rect)
-#else
-        .background(.ultraThinMaterial)
-#endif
+        .fileImporter(
+            isPresented: $showingThemeImporter,
+            allowedContentTypes: [.json, .plainText]
+        ) { result in
+            guard case .success(let url) = result else { return }
+            _ = url.startAccessingSecurityScopedResource()
+            defer { url.stopAccessingSecurityScopedResource() }
+            do {
+                try themeManager.adoptImportedTheme(from: url)
+            } catch {
+                importError = error.localizedDescription
+                showingImportError = true
+            }
+        }
+        .alert("Could not load theme", isPresented: $showingImportError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(importError)
+        }
     }
 }
