@@ -47,12 +47,6 @@ open 3DFS.xcodeproj
 
 Then press **⌘R** to build and run. The app cannot be launched with `swift run` because it is a SwiftUI/AppKit macOS app.
 
-For a command-line build check (no UI):
-
-```bash
-swift build
-```
-
 ## Theming
 
 Themes are defined as YAML files and stored in:
