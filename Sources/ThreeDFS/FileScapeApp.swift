@@ -4,9 +4,7 @@ import SwiftUI
 struct ThreeDFSApp: App {
     var body: some Scene {
         mainWindowScene
-#if os(macOS)
         themeEditorScene
-#endif
     }
 }
 
@@ -42,6 +40,13 @@ private extension ThreeDFSApp {
             ContentView()
         }
         .defaultSize(width: 1280, height: 800)
+    }
+
+    var themeEditorScene: some Scene {
+        Window("Theme Editor", id: "theme-editor") {
+            ThemeEditorView()
+        }
+        .defaultSize(width: 720, height: 560)
     }
 }
 #endif

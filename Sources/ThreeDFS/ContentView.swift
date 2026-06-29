@@ -154,8 +154,9 @@ private struct Toolbar: View {
 #if os(macOS)
                 Divider()
                 Button("Import Theme…") { themeManager.importTheme() }
-                Button("Theme Editor…") { openWindow(id: "theme-editor") }
 #endif
+                Divider()
+                Button("Theme Editor…") { openWindow(id: "theme-editor") }
             } label: {
                 Image(systemName: "paintpalette")
                     .font(.system(size: 12))
