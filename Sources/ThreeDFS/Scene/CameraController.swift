@@ -3,6 +3,7 @@ import simd
 
 /// Manages camera position in spherical coordinates around a focus point.
 /// Elevation is clamped so the camera never goes below the ground plane.
+@MainActor
 final class CameraController {
     var azimuth: Float = 0
     var elevation: Float = 0.50
