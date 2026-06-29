@@ -40,7 +40,7 @@ Built with SwiftUI, SceneKit, and macOS 26's Liquid Glass APIs.
 Clone the repo and open the project in Xcode:
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/mburger89/3DFS
 cd 3DFS
 open 3DFS.xcodeproj
 ```
