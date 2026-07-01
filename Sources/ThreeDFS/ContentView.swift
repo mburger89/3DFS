@@ -9,13 +9,14 @@ struct ContentView: View {
     #endif
 
     var body: some View {
-        Group {
-            if navigator.needsRootSelection {
-                WelcomeView(navigator: navigator)
-            } else {
-                mainView
-            }
-        }
+//        Group {
+//            if navigator.needsRootSelection {
+//                WelcomeView(navigator: navigator)
+//            } else {
+//
+//            }
+//        }
+        mainView
         .fileImporter(
             isPresented: $navigator.showingFolderPicker,
             allowedContentTypes: [.folder]
@@ -28,7 +29,9 @@ struct ContentView: View {
 
     private var mainView: some View {
         #if os(visionOS)
-        sceneContent
+        // RealityView must be the direct window content on visionOS — wrapping it in
+        // a ZStack or other SwiftUI container misaligns the 3D coordinate space.
+        FileScapeSceneView(navigator: navigator)
             .ornament(attachmentAnchor: .scene(.bottom)) {
                 VStack(spacing: 0) {
                     if showBreadcrumbs {
@@ -78,22 +81,6 @@ struct ContentView: View {
         .background(Color(red: 0.03, green: 0.04, blue: 0.07))
         .animation(.easeInOut(duration: 0.2), value: showBreadcrumbs)
         #endif
-    }
-
-    private var sceneContent: some View {
-        ZStack {
-            FileScapeSceneView(navigator: navigator)
-
-            #if !os(visionOS)
-            if navigator.currentChildren.isEmpty && !navigator.isLoading {
-                emptyState
-            }
-            #endif
-
-            if navigator.isLoading {
-                loadingOverlay
-            }
-        }
     }
 
     private var emptyState: some View {

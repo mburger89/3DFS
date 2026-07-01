@@ -60,7 +60,13 @@ final class CameraController {
         let gridD = Float(max(0, rows - 1)) * spacing
         focusPoint = SIMD3<Float>(0, 0, 0)
         distance   = max(gridW, gridD) * 0.65 + 9
-        elevation  = 0.50
+        #if os(visionOS)
+        // elevation = π/2 → applyToWorld rotation angle = 0 → grid faces user with no tilt
+        azimuth   = 0
+        elevation = Float.pi / 2
+        #else
+        elevation = 0.50
+        #endif
     }
 
     private func clamp(_ v: Float, _ lo: Float, _ hi: Float) -> Float { min(max(v, lo), hi) }

@@ -10,6 +10,10 @@ final class FileSystemSceneManager: ObservableObject {
 
     private var gridContainer: Entity?
     private(set) var gridLoadCount = 0
+    private var loadGeneration = 0  // incremented each call; stale completions bail out
+    // Incremented after each grid swap on visionOS; observed by RealityView's update
+    // closure so it force-re-adds rootEntity and the renderer picks up new children.
+    @Published private(set) var gridVersion = 0
 
     private let spacing: Float = 2.6
     private let boxSize:  Float = 1.9
@@ -40,7 +44,12 @@ final class FileSystemSceneManager: ObservableObject {
     // MARK: - Grid
 
     func loadGrid(_ fileNodes: [FileNode], animated: Bool, theme: Theme) async {
+        loadGeneration += 1
+        let myGeneration = loadGeneration
+
+        #if !os(visionOS)
         let isAnimated = animated && gridLoadCount > 0
+        #endif
         gridLoadCount += 1
 
         // On visionOS show a demo grid when the real folder is empty so there's
@@ -73,15 +82,25 @@ final class FileSystemSceneManager: ObservableObject {
 
         #if os(visionOS)
         if !nodes.isEmpty {
-            // Scale the entire grid to fit within the ~0.85 m usable space of the
-            // 1.2 m volumetric window. spacing/boxSize are in RealityKit meters.
+            // Scale to fill ~90% of the 1 m volume.
             let gridW = Float(max(1, totalCols) - 1) * spacing + boxSize
             let gridD = Float(max(1, totalRows) - 1) * spacing + boxSize
-            let scale = 0.85 / max(gridW, gridD)
+            let scale = 0.90 / max(gridW, gridD)
             newContainer.scale = SIMD3<Float>(repeating: scale)
-            newContainer.position.y = -0.1
+            // The entity position is in the PARENT's (rootEntity) coordinate space and is
+            // NOT affected by newContainer's own scale, so the centering offset must
+            // include the scale factor — otherwise boxes land 2+ m outside the volume.
+            newContainer.position = SIMD3<Float>(
+                -Float(max(0, totalCols - 1)) * spacing * scale / 2,
+                -0.2,
+                -Float(max(0, totalRows - 1)) * spacing * scale / 2
+            )
         }
         #endif
+
+        // If a newer loadGrid call started while we were awaiting textures, discard
+        // this result so the newer one wins and the scene isn't double-written.
+        guard myGeneration == loadGeneration else { return }
 
         camera.resetForGrid(cols: cols, rows: rows, spacing: spacing)
         applyCamera()
@@ -89,6 +108,15 @@ final class FileSystemSceneManager: ObservableObject {
         let old = gridContainer
         gridContainer = newContainer
 
+        #if os(visionOS)
+        // OpacityComponent animations (FromToByAction<Float>) silently fail in the
+        // visionOS simulator, leaving containers invisible. Swap directly instead.
+        old?.removeFromParent()
+        rootEntity.addChild(newContainer)
+        // Signal the RealityView update closure so it re-adds rootEntity to content,
+        // forcing the Metal renderer to pick up the new children.
+        gridVersion += 1
+        #else
         if isAnimated {
             newContainer.components.set(OpacityComponent(opacity: 0))
         }
@@ -110,6 +138,7 @@ final class FileSystemSceneManager: ObservableObject {
         } else {
             old?.removeFromParent()
         }
+        #endif
     }
 
     // MARK: - Lights

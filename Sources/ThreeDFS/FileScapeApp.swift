@@ -40,7 +40,7 @@ private extension ThreeDFSApp {
             ContentView()
         }
         .windowStyle(.volumetric)
-        .defaultSize(width: 1.2, height: 0.8, depth: 1.2, in: .meters)
+        .defaultSize(width: 1.0, height: 1.0, depth: 1.0, in: .meters)
     }
 
     // Declared so visionOS can match any cached UIWindowSceneSessionRoleApplication
