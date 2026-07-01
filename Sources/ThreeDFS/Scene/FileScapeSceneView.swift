@@ -24,6 +24,16 @@ struct FileScapeSceneView: View {
             #if !os(visionOS)
             content.add(scene.cameraEntity)
             #endif
+        } update: { [scene] content in
+            #if os(visionOS)
+            // gridVersion increments after every async loadGrid completes.
+            // Removing and re-adding rootEntity forces the Metal renderer to
+            // register its new children — mutations from async tasks alone don't
+            // trigger a re-render on the visionOS simulator.
+            _ = scene.gridVersion
+            content.remove(scene.rootEntity)
+            content.add(scene.rootEntity)
+            #endif
         }
         .task(id: "\(navigator.epoch)|\(themeManager.current.name)") {
             await scene.loadGrid(
@@ -110,4 +120,8 @@ struct FileScapeSceneView: View {
         scene.applyCamera()
     }
     #endif
+}
+
+#Preview {
+    FileScapeSceneView(navigator: FileNavigator())
 }

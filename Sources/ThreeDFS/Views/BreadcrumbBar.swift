@@ -37,10 +37,15 @@ struct BreadcrumbBar: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
         }
-#if os(macOS)
+        #if os(visionOS)
+        .background(.regularMaterial, in: .rect)
+        #else
         .glassEffect(.regular, in: .rect)
-#else
-        .background(.ultraThinMaterial)
-#endif
+        #endif
     }
+}
+
+#Preview {
+    BreadcrumbBar(navigator: FileNavigator())
+        .frame(width: 400)
 }

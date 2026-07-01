@@ -4,9 +4,7 @@ import SwiftUI
 struct ThreeDFSApp: App {
     var body: some Scene {
         mainWindowScene
-#if os(macOS)
         themeEditorScene
-#endif
     }
 }
 
@@ -41,7 +39,18 @@ private extension ThreeDFSApp {
         WindowGroup {
             ContentView()
         }
-        .defaultSize(width: 1280, height: 800)
+        .windowStyle(.volumetric)
+        .defaultSize(width: 1.0, height: 1.0, depth: 1.0, in: .meters)
+    }
+
+    // Declared so visionOS can match any cached UIWindowSceneSessionRoleApplication
+    // session from a previous build. The scene is fully suppressed — the Theme Editor
+    // is presented as a sheet from ContentView instead.
+    var themeEditorScene: some Scene {
+        Window("Theme Editor", id: "theme-editor") {
+            EmptyView()
+        }
+        .restorationBehavior(.disabled)
     }
 }
 #endif
