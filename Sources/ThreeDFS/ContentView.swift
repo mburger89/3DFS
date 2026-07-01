@@ -4,6 +4,9 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @StateObject private var navigator = FileNavigator()
     @State private var showBreadcrumbs = true
+    #if os(visionOS)
+    @State private var showingThemeEditor = false
+    #endif
 
     var body: some View {
         Group {
@@ -24,6 +27,44 @@ struct ContentView: View {
     }
 
     private var mainView: some View {
+        #if os(visionOS)
+        sceneContent
+            .ornament(attachmentAnchor: .scene(.bottom)) {
+                VStack(spacing: 0) {
+                    if showBreadcrumbs {
+                        BreadcrumbBar(navigator: navigator)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                    Toolbar(navigator: navigator, showBreadcrumbs: $showBreadcrumbs,
+                            openThemeEditor: { showingThemeEditor = true })
+                }
+                .frame(minWidth: 480)
+                .animation(.easeInOut(duration: 0.2), value: showBreadcrumbs)
+            }
+            .ornament(attachmentAnchor: .scene(.top)) {
+                if navigator.currentChildren.isEmpty && !navigator.isLoading {
+                    HStack(spacing: 10) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 18))
+                            .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Demo view")
+                                .font(.system(size: 13, weight: .semibold))
+                            Text("Tap Choose Root… to visualize your own files.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(.regularMaterial, in: .rect(cornerRadius: 12))
+                }
+            }
+            .sheet(isPresented: $showingThemeEditor) {
+                ThemeEditorView()
+                    .frame(minWidth: 640, minHeight: 480)
+            }
+        #else
         VStack(spacing: 0) {
             Toolbar(navigator: navigator, showBreadcrumbs: $showBreadcrumbs)
 
@@ -32,20 +73,27 @@ struct ContentView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
 
-            ZStack {
-                FileScapeSceneView(navigator: navigator)
-
-                if navigator.currentChildren.isEmpty && !navigator.isLoading {
-                    emptyState
-                }
-
-                if navigator.isLoading {
-                    loadingOverlay
-                }
-            }
+            sceneContent
         }
         .background(Color(red: 0.03, green: 0.04, blue: 0.07))
         .animation(.easeInOut(duration: 0.2), value: showBreadcrumbs)
+        #endif
+    }
+
+    private var sceneContent: some View {
+        ZStack {
+            FileScapeSceneView(navigator: navigator)
+
+            #if !os(visionOS)
+            if navigator.currentChildren.isEmpty && !navigator.isLoading {
+                emptyState
+            }
+            #endif
+
+            if navigator.isLoading {
+                loadingOverlay
+            }
+        }
     }
 
     private var emptyState: some View {
@@ -57,7 +105,11 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
         }
         .padding(24)
+        #if os(visionOS)
+        .background(.regularMaterial, in: .rect(cornerRadius: 16))
+        #else
         .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        #endif
     }
 
     private var loadingOverlay: some View {
@@ -70,7 +122,11 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(width: 110, height: 80)
+        #if os(visionOS)
+        .background(.regularMaterial, in: .rect(cornerRadius: 16))
+        #else
         .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        #endif
     }
 }
 
@@ -79,6 +135,7 @@ struct ContentView: View {
 private struct Toolbar: View {
     @ObservedObject var navigator: FileNavigator
     @Binding var showBreadcrumbs: Bool
+    var openThemeEditor: (() -> Void)? = nil
     @ObservedObject private var themeManager: ThemeManager = .shared
     @Environment(\.openWindow) private var openWindow
     @State private var showingThemeImporter = false
@@ -148,8 +205,10 @@ private struct Toolbar: View {
                 }
                 Divider()
                 Button("Import Theme…") { showingThemeImporter = true }
+                #if !os(visionOS)
                 Divider()
                 Button("Theme Editor…") { openWindow(id: "theme-editor") }
+                #endif
             } label: {
                 Image(systemName: "paintpalette")
                     .font(.system(size: 12))
@@ -157,6 +216,17 @@ private struct Toolbar: View {
             .menuStyle(.borderlessButton)
             .fixedSize()
             .help("Switch theme")
+
+            #if os(visionOS)
+            Button {
+                openThemeEditor?()
+            } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 12))
+            }
+            .buttonStyle(.plain)
+            .help("Theme Editor")
+            #endif
 
             Divider()
                 .frame(height: 16)
@@ -176,7 +246,11 @@ private struct Toolbar: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
+        #if os(visionOS)
+        .background(.regularMaterial, in: .rect)
+        #else
         .glassEffect(.regular.interactive(), in: .rect)
+        #endif
         .fileImporter(
             isPresented: $showingThemeImporter,
             allowedContentTypes: [.json, .plainText]
@@ -197,4 +271,8 @@ private struct Toolbar: View {
             Text(importError)
         }
     }
+}
+
+#Preview {
+    ContentView()
 }

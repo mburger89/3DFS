@@ -74,6 +74,31 @@ struct ThemeEditorView: View {
 
     private var sidebar: some View {
         VStack(spacing: 0) {
+            #if os(visionOS)
+            List {
+                Section("Built-in") {
+                    ForEach(Theme.builtIn) { theme in
+                        themeRow(theme, isCustom: false)
+                            .contentShape(Rectangle())
+                            .onTapGesture { selectedName = theme.name }
+                            .listRowBackground(theme.name == selectedName
+                                ? Color.accentColor.opacity(0.15) : Color.clear)
+                    }
+                }
+                if !manager.customThemes.isEmpty {
+                    Section("Custom") {
+                        ForEach(manager.customThemes) { theme in
+                            themeRow(theme, isCustom: true)
+                                .contentShape(Rectangle())
+                                .onTapGesture { selectedName = theme.name }
+                                .listRowBackground(theme.name == selectedName
+                                    ? Color.accentColor.opacity(0.15) : Color.clear)
+                        }
+                    }
+                }
+            }
+            .listStyle(.sidebar)
+            #else
             List(selection: $selectedName) {
                 Section("Built-in") {
                     ForEach(Theme.builtIn) { theme in
@@ -89,6 +114,7 @@ struct ThemeEditorView: View {
                 }
             }
             .listStyle(.sidebar)
+            #endif
 
             Divider()
 
@@ -319,6 +345,11 @@ struct ThemeEditorView: View {
 }
 
 // MARK: - Name field (avoids subscript mutation on private(set) array)
+
+#Preview {
+    ThemeEditorView()
+        .frame(width: 720, height: 560)
+}
 
 private struct NameField: View {
     let theme: Theme

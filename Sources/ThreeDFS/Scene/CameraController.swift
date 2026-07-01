@@ -50,7 +50,9 @@ final class CameraController {
         let yRot = simd_quatf(angle: -azimuth,                  axis: [0, 1, 0])
         let xRot = simd_quatf(angle:  elevation - Float.pi / 2, axis: [1, 0, 0])
         worldEntity.orientation = yRot * xRot
-        worldEntity.position    = SIMD3<Float>(-focusPoint.x, -focusPoint.y, -(distance + focusPoint.z))
+        // On visionOS the content lives inside the volumetric window, so we only
+        // rotate — never translate away from the volume origin.
+        worldEntity.position = .zero
     }
 
     func resetForGrid(cols: Int, rows: Int, spacing: Float) {
