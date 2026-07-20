@@ -10,6 +10,7 @@ Built with SwiftUI, SceneKit, and macOS 26's Liquid Glass APIs.
 
 - **3D file system visualization** — directories scale in height by child count, files are always flat
 - **Keyboard & mouse navigation** — orbit, pan, zoom, and fly with WASD / Q / E
+- **Gamepad support** — any MFi/Xbox/PlayStation-style controller can drive the camera and navigate folders
 - **Breadcrumb trail** — shows your current path and lets you jump back to any ancestor
 - **Theming** — four built-in themes, a live theme editor, and support for custom YAML themes
 - **Full Disk Access or folder picker** — browse your entire home directory or scope to a specific folder
@@ -26,6 +27,16 @@ Built with SwiftUI, SceneKit, and macOS 26's Liquid Glass APIs.
 | WASD | Move focus point |
 | Click a volume | Enter directory |
 | ⌘[ | Go back |
+
+**Gamepad** (macOS/iOS use a screen-center reticle to aim; visionOS uses native gaze + pinch instead):
+
+| Input | Action |
+|-------|--------|
+| Left stick | Move focus point |
+| Right stick | Orbit camera |
+| Triggers (L2/R2) | Zoom out/in |
+| A / Cross | Enter highlighted directory |
+| B / Circle | Go back |
 
 ---
 
@@ -75,16 +86,17 @@ Sources/ThreeDFS/
 │   ├── FileSystemScanner.swift # Live directory read at navigate time
 │   └── FileSystemIndex.swift   # Background pre-scan actor
 ├── Scene/
-│   ├── FileScapeSceneView.swift # NSViewRepresentable bridge
-│   ├── FileSystemScene.swift    # SCNScene — builds the 3D grid
-│   ├── VolumeNode.swift         # SCNNode subclass for each file/dir
-│   ├── CameraController.swift   # Spherical camera (orbit/pan/zoom)
-│   └── KeyCaptureSCNView.swift  # SCNView subclass for keyboard input
+│   ├── FileScapeSceneView.swift # SwiftUI RealityView + gesture/gamepad wiring
+│   ├── FileSystemScene.swift    # RealityKit scene manager — builds the 3D grid
+│   ├── VolumeNode.swift         # ModelEntity factory for each file/dir
+│   └── CameraController.swift   # Spherical camera (orbit/pan/zoom)
 ├── Theming/
 │   ├── Theme.swift              # Codable theme model
 │   ├── ThemeManager.swift       # Singleton, built-in + custom themes
 │   ├── ThemeEditorView.swift    # Live theme editor window
 │   └── YAMLThemeParser.swift    # Lightweight YAML → JSON parser
+├── Input/
+│   └── GameControllerManager.swift # Gamepad polling (GameController framework)
 └── Views/
     ├── BreadcrumbBar.swift      # Path breadcrumb strip
     └── WelcomeView.swift        # First-launch access flow

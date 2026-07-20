@@ -37,6 +37,47 @@ final class FileSystemSceneManager: ObservableObject {
         #endif
     }
 
+    // MARK: - Gamepad reticle (macOS/iOS only — visionOS has no fixed camera transform to
+    // aim from; gaze + pinch already selects there via the existing tap gesture)
+
+    #if !os(visionOS)
+    private(set) var highlightedEntity: Entity?
+
+    var highlightedFileNode: FileNode? {
+        highlightedEntity?.components[VolumeNodeComponent.self]?.fileNode
+    }
+
+    /// Raycasts from the camera through the viewport center and scales up whichever
+    /// volume is under that reticle, so gamepad users get the same "aim and select"
+    /// affordance mouse users get for free from tapping.
+    func updateReticleHighlight() {
+        let target = volumeUnderReticle()
+        guard target !== highlightedEntity else { return }
+        highlightedEntity?.scale = SIMD3<Float>(repeating: 1)
+        target?.scale = SIMD3<Float>(repeating: 1.08)
+        highlightedEntity = target
+    }
+
+    func clearReticleHighlight() {
+        highlightedEntity?.scale = SIMD3<Float>(repeating: 1)
+        highlightedEntity = nil
+    }
+
+    private func volumeUnderReticle() -> Entity? {
+        guard let liveScene = cameraEntity.scene else { return nil }
+        let origin = cameraEntity.position(relativeTo: nil)
+        let hits = liveScene.raycast(origin: origin, direction: camera.forwardDirection, length: 400)
+        for hit in hits {
+            var e: Entity? = hit.entity
+            while let candidate = e {
+                if candidate.components[VolumeNodeComponent.self] != nil { return candidate }
+                e = candidate.parent
+            }
+        }
+        return nil
+    }
+    #endif
+
     // MARK: - Grid
 
     func loadGrid(_ fileNodes: [FileNode], animated: Bool, theme: Theme) async {
