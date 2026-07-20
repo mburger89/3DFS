@@ -2,7 +2,7 @@
 
 A macOS app that visualizes your file system as an interactive 3D grid of volumes. Directories are rendered as boxes whose height reflects the number of children inside them; files appear as flat slabs. Navigate by clicking into folders, orbiting the camera, and flying through your file system in three dimensions.
 
-Built with SwiftUI, SceneKit, and macOS 26's Liquid Glass APIs.
+Built with SwiftUI, RealityKit, and macOS 26's Liquid Glass APIs.
 
 ---
 
@@ -11,6 +11,7 @@ Built with SwiftUI, SceneKit, and macOS 26's Liquid Glass APIs.
 - **3D file system visualization** — directories scale in height by child count, files are always flat
 - **Keyboard & mouse navigation** — orbit, pan, zoom, and fly with WASD / Q / E
 - **Gamepad support** — any MFi/Xbox/PlayStation-style controller can drive the camera and navigate folders
+- **Hover preview** — aim at a directory (mouse or gamepad reticle) and it cuts in half with a shrunk peek of its contents stacked on top, before you commit to entering it
 - **Breadcrumb trail** — shows your current path and lets you jump back to any ancestor
 - **Theming** — four built-in themes, a live theme editor, and support for custom YAML themes
 - **Full Disk Access or folder picker** — browse your entire home directory or scope to a specific folder

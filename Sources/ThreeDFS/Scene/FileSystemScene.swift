@@ -1,6 +1,7 @@
 import RealityKit
 import CoreGraphics
 import Foundation
+import simd
 
 @MainActor
 final class FileSystemSceneManager: ObservableObject {
@@ -37,36 +38,134 @@ final class FileSystemSceneManager: ObservableObject {
         #endif
     }
 
-    // MARK: - Gamepad reticle (macOS/iOS only — visionOS has no fixed camera transform to
-    // aim from; gaze + pinch already selects there via the existing tap gesture)
+    // MARK: - Aim & hover preview (macOS/iOS only — visionOS has no fixed camera
+    // transform to raycast from, and gaze isn't exposed to app code; gaze + pinch
+    // there already provides look-and-select via the existing tap gesture)
+    //
+    // Both the gamepad reticle and mouse hover feed into the same `setAimed(_:index:)`,
+    // so aiming at a directory by either method halves its box and stacks a shrunk
+    // replica of its own contents on top as a peek before diving in.
 
     #if !os(visionOS)
-    private(set) var highlightedEntity: Entity?
+    private(set) var aimedEntity: Entity?
+    private var previewContainer: Entity?
+    private var previewTask: Task<Void, Never>?
 
-    var highlightedFileNode: FileNode? {
-        highlightedEntity?.components[VolumeNodeComponent.self]?.fileNode
+    var aimedFileNode: FileNode? {
+        aimedEntity?.components[VolumeNodeComponent.self]?.fileNode
     }
 
-    /// Raycasts from the camera through the viewport center and scales up whichever
-    /// volume is under that reticle, so gamepad users get the same "aim and select"
-    /// affordance mouse users get for free from tapping.
-    func updateReticleHighlight() {
-        let target = volumeUnderReticle()
-        guard target !== highlightedEntity else { return }
-        highlightedEntity?.scale = SIMD3<Float>(repeating: 1)
-        target?.scale = SIMD3<Float>(repeating: 1.08)
-        highlightedEntity = target
+    /// Raycasts from the camera through the fixed, screen-center reticle (gamepad).
+    func updateReticleAim(index: FileSystemIndex) {
+        setAimed(volume(alongOrigin: cameraEntity.position(relativeTo: nil), direction: camera.forwardDirection), index: index)
     }
 
-    func clearReticleHighlight() {
-        highlightedEntity?.scale = SIMD3<Float>(repeating: 1)
-        highlightedEntity = nil
+    /// Raycasts from the camera through an arbitrary screen point (mouse/trackpad).
+    func updateHoverAim(screenPoint: CGPoint, viewSize: CGSize, index: FileSystemIndex) {
+        guard viewSize.width > 0, viewSize.height > 0,
+              let fov = cameraEntity.components[PerspectiveCameraComponent.self]
+        else { return }
+
+        let ndcX = Float(screenPoint.x / viewSize.width) * 2 - 1
+        let ndcY = 1 - Float(screenPoint.y / viewSize.height) * 2
+        let aspect = Float(viewSize.width / viewSize.height)
+        let tanHalfFovY = tan(fov.fieldOfViewInDegrees * .pi / 180 / 2)
+
+        let localDir = SIMD3<Float>(ndcX * tanHalfFovY * aspect, ndcY * tanHalfFovY, -1)
+        let worldDir = normalize(cameraEntity.orientation(relativeTo: nil).act(localDir))
+        setAimed(volume(alongOrigin: cameraEntity.position(relativeTo: nil), direction: worldDir), index: index)
     }
 
-    private func volumeUnderReticle() -> Entity? {
+    func clearAim() {
+        endPreview(restoring: aimedEntity)
+        aimedEntity = nil
+    }
+
+    private func setAimed(_ target: Entity?, index: FileSystemIndex) {
+        guard target !== aimedEntity else { return }
+        endPreview(restoring: aimedEntity)
+        guard let target, let comp = target.components[VolumeNodeComponent.self], comp.fileNode.isDirectory else {
+            aimedEntity = nil
+            return
+        }
+        aimedEntity = target
+        beginPreview(for: target, fileNode: comp.fileNode, boxHeight: comp.boxHeight, index: index)
+    }
+
+    private func beginPreview(for entity: Entity, fileNode: FileNode, boxHeight: Float, index: FileSystemIndex) {
+        var halved = entity.transform
+        halved.scale.y = 0.5
+        halved.translation.y = boxHeight / 4
+        entity.move(to: halved, relativeTo: entity.parent, duration: 0.18, timingFunction: .easeInOut)
+
+        let container = Entity()
+        container.position = SIMD3<Float>(entity.position.x, boxHeight / 2 + 0.04, entity.position.z)
+        entity.parent?.addChild(container)
+        previewContainer = container
+
+        let theme = ThemeManager.shared.current
+        previewTask = Task { [weak self] in
+            let children = await FileSystemScanner.scan(url: fileNode.url, index: index)
+            guard !Task.isCancelled, let self, self.aimedEntity === entity else { return }
+            await self.populatePreview(container: container, children: children, theme: theme)
+        }
+    }
+
+    private func populatePreview(container: Entity, children: [FileNode], theme: Theme) async {
+        let previewChildren = Array(children.prefix(24))
+        guard !previewChildren.isEmpty else { return }
+
+        let scaleFactor: Float = 0.42
+        let miniSpacing = spacing * scaleFactor
+        let cols = gridColumnCount(for: previewChildren.count)
+        let rows = Int(ceil(Double(previewChildren.count) / Double(cols)))
+
+        for (i, node) in previewChildren.enumerated() {
+            guard !Task.isCancelled else { return }
+            let mini = await VolumeNode.make(fileNode: node, boxWidth: boxSize, boxDepth: boxSize, theme: theme)
+            mini.components.remove(CollisionComponent.self)
+            mini.components.remove(InputTargetComponent.self)
+            mini.scale = SIMD3<Float>(repeating: scaleFactor)
+            let miniHeight = mini.boxHeight * scaleFactor
+            let col = i % cols
+            let row = i / cols
+            mini.position = SIMD3<Float>(Float(col) * miniSpacing, miniHeight / 2, Float(row) * miniSpacing)
+            container.addChild(mini)
+        }
+        guard !Task.isCancelled else { return }
+
+        let offsetX = -Float(min(cols, previewChildren.count) - 1) * miniSpacing / 2
+        let offsetZ = -Float(rows - 1) * miniSpacing / 2
+        for child in container.children {
+            child.position.x += offsetX
+            child.position.z += offsetZ
+        }
+
+        container.components.set(OpacityComponent(opacity: 0))
+        if let fadeIn = try? AnimationResource.makeActionAnimation(
+            for: FromToByAction<Float>(to: 1, timing: .linear, isAdditive: false),
+            duration: 0.2, bindTarget: .opacity
+        ) {
+            container.playAnimation(fadeIn)
+        }
+    }
+
+    private func endPreview(restoring entity: Entity?) {
+        previewTask?.cancel()
+        previewTask = nil
+        if let entity, let comp = entity.components[VolumeNodeComponent.self] {
+            var restored = entity.transform
+            restored.scale.y = 1
+            restored.translation.y = comp.boxHeight / 2
+            entity.move(to: restored, relativeTo: entity.parent, duration: 0.18, timingFunction: .easeInOut)
+        }
+        previewContainer?.removeFromParent()
+        previewContainer = nil
+    }
+
+    private func volume(alongOrigin origin: SIMD3<Float>, direction: SIMD3<Float>) -> Entity? {
         guard let liveScene = cameraEntity.scene else { return nil }
-        let origin = cameraEntity.position(relativeTo: nil)
-        let hits = liveScene.raycast(origin: origin, direction: camera.forwardDirection, length: 400)
+        let hits = liveScene.raycast(origin: origin, direction: direction, length: 400)
         for hit in hits {
             var e: Entity? = hit.entity
             while let candidate = e {
@@ -81,6 +180,9 @@ final class FileSystemSceneManager: ObservableObject {
     // MARK: - Grid
 
     func loadGrid(_ fileNodes: [FileNode], animated: Bool, theme: Theme) async {
+        #if !os(visionOS)
+        clearAim()
+        #endif
         let isAnimated = animated && gridLoadCount > 0
         gridLoadCount += 1
 

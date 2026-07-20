@@ -21,50 +21,60 @@ struct FileScapeSceneView: View {
     private let gamepadTimer = Timer.publish(every: 1 / 60.0, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        ZStack {
-            RealityView { [scene] content in
-                scene.setup()
-                content.add(scene.rootEntity)
+        GeometryReader { proxy in
+            ZStack {
+                RealityView { [scene] content in
+                    scene.setup()
+                    content.add(scene.rootEntity)
+                    #if !os(visionOS)
+                    content.add(scene.cameraEntity)
+                    #endif
+                }
+                .task(id: "\(navigator.epoch)|\(themeManager.current.name)") {
+                    await scene.loadGrid(
+                        navigator.currentChildren,
+                        animated: scene.gridLoadCount > 0,
+                        theme: themeManager.current
+                    )
+                }
+                .gesture(dragGesture)
+                .simultaneousGesture(magnifyGesture)
+                .simultaneousGesture(tapGesture)
+                #if os(macOS)
+                .focusable()
+                .focused($isFocused)
+                .onAppear { isFocused = true }
+                .onKeyPress(phases: [.down, .up]) { press in
+                    if press.phase == .down { keysDown.insert(press.key) }
+                    else                    { keysDown.remove(press.key) }
+                    return .handled
+                }
+                .onReceive(wasdTimer) { _ in handleWASD() }
+                .onContinuousHover(coordinateSpace: .local) { phase in
+                    switch phase {
+                    case .active(let location):
+                        scene.updateHoverAim(screenPoint: location, viewSize: proxy.size, index: navigator.index)
+                    case .ended:
+                        scene.clearAim()
+                    }
+                }
+                #endif
+
                 #if !os(visionOS)
-                content.add(scene.cameraEntity)
+                if gamepad.isConnected {
+                    Image(systemName: "viewfinder")
+                        .font(.system(size: 28, weight: .thin))
+                        .foregroundStyle(.white.opacity(0.8))
+                        .shadow(radius: 2)
+                        .allowsHitTesting(false)
+                }
                 #endif
             }
-            .task(id: "\(navigator.epoch)|\(themeManager.current.name)") {
-                await scene.loadGrid(
-                    navigator.currentChildren,
-                    animated: scene.gridLoadCount > 0,
-                    theme: themeManager.current
-                )
-            }
-            .gesture(dragGesture)
-            .simultaneousGesture(magnifyGesture)
-            .simultaneousGesture(tapGesture)
-            #if os(macOS)
-            .focusable()
-            .focused($isFocused)
-            .onAppear { isFocused = true }
-            .onKeyPress(phases: [.down, .up]) { press in
-                if press.phase == .down { keysDown.insert(press.key) }
-                else                    { keysDown.remove(press.key) }
-                return .handled
-            }
-            .onReceive(wasdTimer) { _ in handleWASD() }
-            #endif
-
-            #if !os(visionOS)
-            if gamepad.isConnected {
-                Image(systemName: "viewfinder")
-                    .font(.system(size: 28, weight: .thin))
-                    .foregroundStyle(.white.opacity(0.8))
-                    .shadow(radius: 2)
-                    .allowsHitTesting(false)
-            }
-            #endif
         }
         .onAppear {
             gamepad.onEnter = {
                 #if !os(visionOS)
-                guard let node = scene.highlightedFileNode, node.isDirectory else { return }
+                guard let node = scene.aimedFileNode, node.isDirectory else { return }
                 Task { @MainActor in await navigator.navigateTo(node) }
                 #endif
             }
@@ -75,7 +85,7 @@ struct FileScapeSceneView: View {
         .onReceive(gamepadTimer) { _ in handleGamepad() }
         #if !os(visionOS)
         .onChange(of: gamepad.isConnected) { _, connected in
-            if !connected { scene.clearReticleHighlight() }
+            if !connected { scene.clearAim() }
         }
         #endif
     }
@@ -159,7 +169,7 @@ struct FileScapeSceneView: View {
             scene.applyCamera()
         }
         #if !os(visionOS)
-        if gamepad.isConnected { scene.updateReticleHighlight() }
+        if gamepad.isConnected { scene.updateReticleAim(index: navigator.index) }
         #endif
     }
 }
