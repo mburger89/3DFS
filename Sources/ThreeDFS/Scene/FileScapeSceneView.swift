@@ -189,3 +189,7 @@ struct FileScapeSceneView: View {
         #endif
     }
 }
+
+#Preview {
+    FileScapeSceneView(navigator: FileNavigator())
+}

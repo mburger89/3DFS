@@ -1,28 +1,37 @@
-#if os(macOS)
 import SwiftUI
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 
 // MARK: - Color ↔ Hex helpers
 
 extension Color {
     init(hex: String) {
-        if let ns = NSColor(hex: hex) {
-            self.init(nsColor: ns)
+        if let cg = CGColor.from(hex: hex) {
+            self.init(cgColor: cg)
         } else {
             self.init(white: 1)
         }
     }
 
     func toHex() -> String {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+#if os(macOS)
         guard let ns = NSColor(self).usingColorSpace(.sRGB) else { return "#FFFFFF" }
-        let r = Int((ns.redComponent   * 255).rounded())
-        let g = Int((ns.greenComponent * 255).rounded())
-        let b = Int((ns.blueComponent  * 255).rounded())
-        let a = Int((ns.alphaComponent * 255).rounded())
-        if a >= 255 {
-            return String(format: "#%02X%02X%02X", r, g, b)
+        r = ns.redComponent; g = ns.greenComponent; b = ns.blueComponent; a = ns.alphaComponent
+#else
+        UIColor(self).getRed(&r, green: &g, blue: &b, alpha: &a)
+#endif
+        let ri = Int((r * 255).rounded())
+        let gi = Int((g * 255).rounded())
+        let bi = Int((b * 255).rounded())
+        let ai = Int((a * 255).rounded())
+        if ai >= 255 {
+            return String(format: "#%02X%02X%02X", ri, gi, bi)
         } else {
-            return String(format: "#%02X%02X%02X%02X", r, g, b, a)
+            return String(format: "#%02X%02X%02X%02X", ri, gi, bi, ai)
         }
     }
 }
@@ -65,6 +74,31 @@ struct ThemeEditorView: View {
 
     private var sidebar: some View {
         VStack(spacing: 0) {
+            #if os(visionOS)
+            List {
+                Section("Built-in") {
+                    ForEach(Theme.builtIn) { theme in
+                        themeRow(theme, isCustom: false)
+                            .contentShape(Rectangle())
+                            .onTapGesture { selectedName = theme.name }
+                            .listRowBackground(theme.name == selectedName
+                                ? Color.accentColor.opacity(0.15) : Color.clear)
+                    }
+                }
+                if !manager.customThemes.isEmpty {
+                    Section("Custom") {
+                        ForEach(manager.customThemes) { theme in
+                            themeRow(theme, isCustom: true)
+                                .contentShape(Rectangle())
+                                .onTapGesture { selectedName = theme.name }
+                                .listRowBackground(theme.name == selectedName
+                                    ? Color.accentColor.opacity(0.15) : Color.clear)
+                        }
+                    }
+                }
+            }
+            .listStyle(.sidebar)
+            #else
             List(selection: $selectedName) {
                 Section("Built-in") {
                     ForEach(Theme.builtIn) { theme in
@@ -80,6 +114,7 @@ struct ThemeEditorView: View {
                 }
             }
             .listStyle(.sidebar)
+            #endif
 
             Divider()
 
@@ -128,8 +163,10 @@ struct ThemeEditorView: View {
         .contextMenu {
             Button("Duplicate") { duplicateTheme(theme) }
             if isCustom {
+#if os(macOS)
                 Button("Export…") { manager.exportTheme(theme) }
                 Divider()
+#endif
                 Button("Delete", role: .destructive) {
                     manager.deleteCustomTheme(theme)
                     selectedName = manager.allThemes.first?.name ?? Theme.default_.name
@@ -161,6 +198,7 @@ struct ThemeEditorView: View {
                         NameField(theme: theme, manager: manager, selectedName: $selectedName)
                     }
                     Spacer()
+#if os(macOS)
                     Button("Export…") {
                         if let t = manager.customThemes.first(where: { $0.name == selectedName }) {
                             manager.exportTheme(t)
@@ -168,6 +206,7 @@ struct ThemeEditorView: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+#endif
                 }
             }
             .padding(.horizontal, 20)
@@ -307,6 +346,11 @@ struct ThemeEditorView: View {
 
 // MARK: - Name field (avoids subscript mutation on private(set) array)
 
+#Preview {
+    ThemeEditorView()
+        .frame(width: 720, height: 560)
+}
+
 private struct NameField: View {
     let theme: Theme
     let manager: ThemeManager
@@ -341,4 +385,3 @@ private struct NameField: View {
         selectedName = trimmed
     }
 }
-#endif

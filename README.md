@@ -16,17 +16,16 @@ Built with SwiftUI, RealityKit, and macOS 26's Liquid Glass APIs.
 - **Theming** — four built-in themes, a live theme editor, and support for custom YAML themes
 - **Full Disk Access or folder picker** — browse your entire home directory or scope to a specific folder
 - **Background indexing** — a background actor pre-scans up to 4 levels deep so navigation feels instant
+- **visionOS support** — runs on Apple Vision Pro with world-rotation camera instead of a perspective camera
 
 ## Controls
 
 | Input | Action |
 |-------|--------|
-| Left drag | Orbit camera |
-| Shift + drag | Pan (slide) |
-| Two-finger scroll | Pan |
+| Drag | Orbit camera |
 | Pinch / Q / E | Zoom |
-| WASD | Move focus point |
-| Click a volume | Enter directory |
+| WASD | Pan focus point |
+| Tap a volume | Enter directory |
 | ⌘[ | Go back |
 
 **Gamepad** (macOS/iOS use a screen-center reticle to aim; visionOS uses native gaze + pinch instead):
@@ -57,7 +56,7 @@ cd 3DFS
 open 3DFS.xcodeproj
 ```
 
-Then press **⌘R** to build and run. The app cannot be launched with `swift run` because it is a SwiftUI/AppKit macOS app.
+Then press **⌘R** to build and run. The app cannot be launched with `swift run` because it is a SwiftUI macOS app.
 
 ## Theming
 
@@ -116,7 +115,7 @@ Sources/ThreeDFS/
 
 ### Key conventions
 
-- `@MainActor` is used broadly — wrap nonisolated SceneKit setup in `MainActor.assumeIsolated { }`
+- `@MainActor` is used broadly — wrap nonisolated RealityKit setup in `MainActor.assumeIsolated { }`
 - Colors in themes are stored as hex strings, not `NSColor`, to keep `Theme` `Codable` and `Sendable`
-- Texture caches (`NSCache`) are keyed `"themeName|url"` so they automatically invalidate on theme change
-- `SCNSceneRendererDelegate` conformances need `@preconcurrency`
+- Texture cache (`NSCache`) is keyed `"face|theme|url"` so it automatically invalidates on theme change
+- On visionOS, camera orbiting rotates `rootEntity` in world space instead of moving a perspective camera

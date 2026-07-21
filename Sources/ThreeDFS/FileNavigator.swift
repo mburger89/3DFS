@@ -38,8 +38,13 @@ final class FileNavigator {
                 await index.startScan(from: url)
                 await navigateTo(FileNode(url: url))
             }
+            return
         }
-        // 3. Otherwise needsRootSelection stays true → WelcomeView is shown.
+#if os(visionOS)
+        // 3. visionOS: fall back to the shared Documents directory (no permission prompt needed).
+        startFromDocuments()
+#endif
+        // 4. Otherwise needsRootSelection stays true → WelcomeView is shown.
     }
 
     // MARK: - Full Disk Access path (macOS only)
@@ -54,6 +59,20 @@ final class FileNavigator {
         Task {
             await index.startScan(from: home)
             await navigateTo(FileNode(url: home))
+        }
+    }
+#endif
+
+    // MARK: - visionOS default root
+
+#if os(visionOS)
+    private func startFromDocuments() {
+        guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        path = []
+        needsRootSelection = false
+        Task {
+            await index.startScan(from: docs)
+            await navigateTo(FileNode(url: docs))
         }
     }
 #endif

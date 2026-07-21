@@ -113,6 +113,10 @@ struct WelcomeView: View {
     }
 }
 
+#Preview {
+    WelcomeView(navigator: FileNavigator())
+}
+
 // MARK: - AccessCard
 
 private struct AccessCard: View {
@@ -169,6 +173,7 @@ private struct AccessCard: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, minHeight: 180, alignment: .topLeading)
+//        .background(.ultraThinMaterial)
 #if os(macOS)
         .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
 #else
