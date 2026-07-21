@@ -126,34 +126,16 @@ final class ThemeManager: ObservableObject {
 
     // MARK: - Load / import
 
-#if os(macOS)
-    /// Import a theme from a .json or .yaml/.yml file chosen by the user.
-    func importTheme() {
-        let panel = NSOpenPanel()
-        panel.title = "Import Theme"
-        panel.message = "Choose a .json or .yaml theme file"
-        panel.allowedContentTypes = []
-        panel.allowsOtherFileTypes = true
-        panel.prompt = "Import"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            let theme = try loadTheme(from: url)
-            // Copy to Application Support so it persists
-            let dest = customThemesDirectory().appendingPathComponent(url.lastPathComponent)
-            try? FileManager.default.copyItem(at: url, to: dest)
-            if !customThemes.contains(where: { $0.name == theme.name }) {
-                customThemes.append(theme)
-            }
-            current = theme
-        } catch {
-            // Surface error via alert
-            let alert = NSAlert()
-            alert.messageText = "Could not load theme"
-            alert.informativeText = error.localizedDescription
-            alert.runModal()
+    /// Import a theme from a URL returned by .fileImporter (cross-platform).
+    func adoptImportedTheme(from url: URL) throws {
+        let theme = try loadTheme(from: url)
+        let dest = customThemesDirectory().appendingPathComponent(url.lastPathComponent)
+        try? FileManager.default.copyItem(at: url, to: dest)
+        if !customThemes.contains(where: { $0.name == theme.name }) {
+            customThemes.append(theme)
         }
+        current = theme
     }
-#endif
 
     // MARK: - Private
 
