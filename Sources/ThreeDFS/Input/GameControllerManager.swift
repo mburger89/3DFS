@@ -1,17 +1,19 @@
-import Foundation
-import GameController
+@preconcurrency import Foundation
+@preconcurrency import GameController
+import Observation
 
 /// Bridges a connected extended gamepad (Xbox/PlayStation/MFi layout) to the scene.
 /// Owned by `FileScapeSceneView`; sampled once per frame by its game-loop timer so
 /// stick deflection reads as continuous analog input rather than one-shot deltas.
 @MainActor
-final class GameControllerManager: ObservableObject {
-    @Published private(set) var isConnected = false
+@Observable
+final class GameControllerManager {
+    private(set) var isConnected = false
 
     /// Fired when the primary action button (A / Cross) is pressed.
-    var onEnter: (() -> Void)?
+    @ObservationIgnored var onEnter: (() -> Void)?
     /// Fired when the secondary action button (B / Circle) is pressed.
-    var onBack: (() -> Void)?
+    @ObservationIgnored var onBack: (() -> Void)?
 
     struct FrameInput {
         var panX: Float = 0
@@ -21,9 +23,10 @@ final class GameControllerManager: ObservableObject {
         var zoom: Float = 0
     }
 
-    private var gamepad: GCExtendedGamepad?
-    private var connectObserver: NSObjectProtocol?
-    private var disconnectObserver: NSObjectProtocol?
+    @ObservationIgnored private var gamepad: GCExtendedGamepad?
+    // nonisolated(unsafe): written only from init/@MainActor, read only from deinit after actor is done
+    @ObservationIgnored nonisolated(unsafe) private var connectObserver: NSObjectProtocol?
+    @ObservationIgnored nonisolated(unsafe) private var disconnectObserver: NSObjectProtocol?
     private let deadzone: Float = 0.12
 
     init() {
@@ -31,13 +34,14 @@ final class GameControllerManager: ObservableObject {
             forName: .GCControllerDidConnect, object: nil, queue: .main
         ) { [weak self] note in
             guard let controller = note.object as? GCController else { return }
-            Task { @MainActor in self?.attach(controller) }
+            // queue: .main guarantees we're on the main thread; no cross-actor send needed
+            MainActor.assumeIsolated { self?.attach(controller) }
         }
         disconnectObserver = NotificationCenter.default.addObserver(
             forName: .GCControllerDidDisconnect, object: nil, queue: .main
         ) { [weak self] note in
             guard let controller = note.object as? GCController else { return }
-            Task { @MainActor in self?.detach(controller) }
+            MainActor.assumeIsolated { self?.detach(controller) }
         }
         if let existing = GCController.controllers().first {
             attach(existing)

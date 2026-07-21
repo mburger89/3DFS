@@ -2,7 +2,7 @@ import SwiftUI
 
 struct WelcomeView: View {
 #if os(macOS)
-    @StateObject private var fdaHelper = FullDiskAccessHelper()
+    @State private var fdaHelper = FullDiskAccessHelper()
 #endif
     let navigator: FileNavigator
 
@@ -90,11 +90,13 @@ struct WelcomeView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
 #if os(macOS)
-        .onReceive(fdaHelper.$isGranted) { granted in
+        .onChange(of: fdaHelper.isGranted) { _, granted in
             if granted { navigator.useFullDiskAccess() }
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            fdaHelper.refresh()
+        .task {
+            for await _ in NotificationCenter.default.notifications(named: NSApplication.didBecomeActiveNotification) {
+                fdaHelper.refresh()
+            }
         }
 #endif
     }

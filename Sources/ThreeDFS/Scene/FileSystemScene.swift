@@ -1,15 +1,17 @@
 import RealityKit
 import CoreGraphics
 import Foundation
+import Observation
 import simd
 
 @MainActor
-final class FileSystemSceneManager: ObservableObject {
+@Observable
+final class FileSystemSceneManager {
     let rootEntity   = Entity()   // grid + lights; on visionOS this is also rotated for orbiting
     let cameraEntity = Entity()   // PerspectiveCameraComponent (macOS / iOS only)
     let camera       = CameraController()
 
-    private var gridContainer: Entity?
+    @ObservationIgnored private var gridContainer: Entity?
     private(set) var gridLoadCount = 0
 
     private let spacing: Float = 2.6
@@ -48,8 +50,8 @@ final class FileSystemSceneManager: ObservableObject {
 
     #if !os(visionOS)
     private(set) var aimedEntity: Entity?
-    private var previewContainer: Entity?
-    private var previewTask: Task<Void, Never>?
+    @ObservationIgnored private var previewContainer: Entity?
+    @ObservationIgnored private var previewTask: Task<Void, Never>?
 
     var aimedFileNode: FileNode? {
         aimedEntity?.components[VolumeNodeComponent.self]?.fileNode

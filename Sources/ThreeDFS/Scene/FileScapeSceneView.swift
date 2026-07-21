@@ -1,12 +1,11 @@
 import SwiftUI
 import RealityKit
-import Combine
 
 struct FileScapeSceneView: View {
-    @ObservedObject var navigator: FileNavigator
-    @ObservedObject var themeManager: ThemeManager = .shared
-    @StateObject private var scene = FileSystemSceneManager()
-    @StateObject private var gamepad = GameControllerManager()
+    var navigator: FileNavigator
+    var themeManager: ThemeManager = .shared
+    @State private var scene = FileSystemSceneManager()
+    @State private var gamepad = GameControllerManager()
 
     // Gesture tracking state
     @State private var lastDragLocation: CGPoint?
@@ -15,10 +14,7 @@ struct FileScapeSceneView: View {
     #if os(macOS)
     @State private var keysDown: Set<KeyEquivalent> = []
     @FocusState private var isFocused: Bool
-    private let wasdTimer = Timer.publish(every: 1 / 60.0, on: .main, in: .common).autoconnect()
     #endif
-
-    private let gamepadTimer = Timer.publish(every: 1 / 60.0, on: .main, in: .common).autoconnect()
 
     var body: some View {
         GeometryReader { proxy in
@@ -49,7 +45,12 @@ struct FileScapeSceneView: View {
                     else                    { keysDown.remove(press.key) }
                     return .handled
                 }
-                .onReceive(wasdTimer) { _ in handleWASD() }
+                .task {
+                    while !Task.isCancelled {
+                        handleWASD()
+                        try? await Task.sleep(for: .seconds(1.0 / 60.0))
+                    }
+                }
                 .onContinuousHover(coordinateSpace: .local) { phase in
                     switch phase {
                     case .active(let location):
@@ -82,7 +83,12 @@ struct FileScapeSceneView: View {
                 Task { @MainActor in await navigator.navigateBack() }
             }
         }
-        .onReceive(gamepadTimer) { _ in handleGamepad() }
+        .task {
+            while !Task.isCancelled {
+                handleGamepad()
+                try? await Task.sleep(for: .seconds(1.0 / 60.0))
+            }
+        }
         #if !os(visionOS)
         .onChange(of: gamepad.isConnected) { _, connected in
             if !connected { scene.clearAim() }

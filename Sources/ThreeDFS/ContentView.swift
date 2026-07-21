@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
-    @StateObject private var navigator = FileNavigator()
+    @State private var navigator = FileNavigator()
     @State private var showBreadcrumbs = true
 
     var body: some View {
@@ -85,9 +85,9 @@ struct ContentView: View {
 // MARK: - Toolbar
 
 private struct Toolbar: View {
-    @ObservedObject var navigator: FileNavigator
+    var navigator: FileNavigator
     @Binding var showBreadcrumbs: Bool
-    @ObservedObject private var themeManager: ThemeManager = .shared
+    private let themeManager: ThemeManager = .shared
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
