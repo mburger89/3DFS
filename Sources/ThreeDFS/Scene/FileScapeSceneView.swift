@@ -13,6 +13,7 @@ struct FileScapeSceneView: View {
 
     #if os(macOS)
     @State private var keysDown: Set<KeyEquivalent> = []
+    @State private var lastHoverPoint: CGPoint = .zero
     @FocusState private var isFocused: Bool
     #endif
 
@@ -54,6 +55,10 @@ struct FileScapeSceneView: View {
                 .onContinuousHover(coordinateSpace: .local) { phase in
                     switch phase {
                     case .active(let location):
+                        let dx = location.x - lastHoverPoint.x
+                        let dy = location.y - lastHoverPoint.y
+                        guard dx * dx + dy * dy > 4 else { return }
+                        lastHoverPoint = location
                         scene.updateHoverAim(screenPoint: location, viewSize: proxy.size, index: navigator.index)
                     case .ended:
                         scene.clearAim()
@@ -148,34 +153,39 @@ struct FileScapeSceneView: View {
         guard !keysDown.isEmpty else { return }
         let speed: Float = 0.08
         var panX: Float = 0, panY: Float = 0
+        var cameraMoved = false
         if keysDown.contains("w") { panY += speed }
         if keysDown.contains("s") { panY -= speed }
         if keysDown.contains("a") { panX -= speed }
         if keysDown.contains("d") { panX += speed }
-        if keysDown.contains("q") { scene.camera.zoom(by: -0.02) }
-        if keysDown.contains("e") { scene.camera.zoom(by:  0.02) }
-        if panX != 0 || panY != 0 { scene.camera.pan(deltaX: panX * 12, deltaY: panY * 12) }
-        scene.applyCamera()
+        if keysDown.contains("q") { scene.camera.zoom(by: -0.02); cameraMoved = true }
+        if keysDown.contains("e") { scene.camera.zoom(by:  0.02); cameraMoved = true }
+        if panX != 0 || panY != 0 { scene.camera.pan(deltaX: panX * 12, deltaY: panY * 12); cameraMoved = true }
+        if cameraMoved { scene.applyCamera() }
     }
     #endif
 
     // MARK: - Gamepad (left stick pan, right stick orbit, triggers zoom, A enter / B back)
 
     private func handleGamepad() {
+        var cameraMoved = false
         if let input = gamepad.sampleFrame() {
             if input.panX != 0 || input.panY != 0 {
                 scene.camera.pan(deltaX: input.panX * 12, deltaY: input.panY * 12)
+                cameraMoved = true
             }
             if input.orbitX != 0 || input.orbitY != 0 {
                 scene.camera.orbit(deltaX: input.orbitX * 18, deltaY: input.orbitY * 18)
+                cameraMoved = true
             }
             if input.zoom != 0 {
                 scene.camera.zoom(by: input.zoom * 0.03)
+                cameraMoved = true
             }
-            scene.applyCamera()
+            if cameraMoved { scene.applyCamera() }
         }
         #if !os(visionOS)
-        if gamepad.isConnected { scene.updateReticleAim(index: navigator.index) }
+        if gamepad.isConnected && cameraMoved { scene.updateReticleAim(index: navigator.index) }
         #endif
     }
 }

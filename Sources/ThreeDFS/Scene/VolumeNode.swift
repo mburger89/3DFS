@@ -18,16 +18,38 @@ enum VolumeNode {
     // Cache TextureResource objects; keyed by "face|theme|url" so they invalidate on theme change.
     nonisolated(unsafe) private static let textureCache = NSCache<NSString, TextureResource>()
 
+    // Cache MeshResource objects keyed by (width, height, depth) — all file nodes share identical geometry.
+    private static var meshCache: [SIMD3<Float>: MeshResource] = [:]
+
+    // Cache CTFont objects per style and size — font creation is expensive.
+    private static var boldFonts: [CGFloat: CTFont] = [:]
+    private static var regularFonts: [CGFloat: CTFont] = [:]
+    private static var monoFonts: [CGFloat: CTFont] = [:]
+
+    private static let modificationDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        return f
+    }()
+
     static func make(fileNode: FileNode, boxWidth: Float, boxDepth: Float, theme: Theme) async -> ModelEntity {
         let boxHeight: Float = fileNode.isDirectory
             ? Float(min(max(0.35, log2(Double(max(1, fileNode.childCount)) + 1.5) * 0.75), 5.5))
             : 0.12
 
         // splitFaces: true → 6 submeshes:  0=Front(+Z) 1=Top(+Y) 2=Back(-Z) 3=Bottom(-Y) 4=Right(+X) 5=Left(-X)
-        let mesh = MeshResource.generateBox(
-            width: boxWidth, height: boxHeight, depth: boxDepth,
-            cornerRadius: 0.06, splitFaces: true
-        )
+        let meshKey = SIMD3<Float>(boxWidth, boxHeight, boxDepth)
+        let mesh: MeshResource
+        if let cached = meshCache[meshKey] {
+            mesh = cached
+        } else {
+            mesh = MeshResource.generateBox(
+                width: boxWidth, height: boxHeight, depth: boxDepth,
+                cornerRadius: 0.06, splitFaces: true
+            )
+            meshCache[meshKey] = mesh
+        }
 
         let side   = await makeSideMaterial(fileNode: fileNode, boxWidth: boxWidth, boxHeight: boxHeight, theme: theme)
         let top    = await makeTopMaterial(fileNode: fileNode, theme: theme)
@@ -48,15 +70,15 @@ enum VolumeNode {
 
     private static func makeSideMaterial(fileNode: FileNode, boxWidth: Float, boxHeight: Float, theme: Theme) async -> any Material {
         if fileNode.isDirectory {
-            if let img = drawSideTexture(fileNode: fileNode, boxWidth: boxWidth, boxHeight: boxHeight, theme: theme),
-               let tex = await loadTexture(img, key: "side|\(theme.name)|\(fileNode.url.path)") {
+            if let tex = await loadTexture(key: "side|\(theme.name)|\(fileNode.url.path)",
+                                           drawing: { drawSideTexture(fileNode: fileNode, boxWidth: boxWidth, boxHeight: boxHeight, theme: theme) }) {
                 var mat = UnlitMaterial()
                 mat.color = .init(tint: .white, texture: MaterialParameters.Texture(tex))
                 return mat
             }
         } else {
-            if let img = drawFileSideTexture(fileNode: fileNode, boxWidth: boxWidth, boxHeight: boxHeight, theme: theme),
-               let tex = await loadTexture(img, key: "fileside|\(theme.name)|\(fileNode.url.path)") {
+            if let tex = await loadTexture(key: "fileside|\(theme.name)|\(fileNode.url.path)",
+                                           drawing: { drawFileSideTexture(fileNode: fileNode, boxWidth: boxWidth, boxHeight: boxHeight, theme: theme) }) {
                 var mat = UnlitMaterial()
                 mat.color = .init(tint: .white, texture: MaterialParameters.Texture(tex))
                 return mat
@@ -78,8 +100,8 @@ enum VolumeNode {
             mat.metallic       = .init(floatLiteral: 0.0)
             return mat
         }
-        if let img = drawFileTopTexture(fileNode: fileNode, theme: theme),
-           let tex = await loadTexture(img, key: "top|\(theme.name)|\(fileNode.url.path)") {
+        if let tex = await loadTexture(key: "top|\(theme.name)|\(fileNode.url.path)",
+                                       drawing: { drawFileTopTexture(fileNode: fileNode, theme: theme) }) {
             var mat = UnlitMaterial()
             mat.color = .init(tint: .white, texture: MaterialParameters.Texture(tex))
             return mat
@@ -95,10 +117,12 @@ enum VolumeNode {
 
     // MARK: - Texture cache
 
-    private static func loadTexture(_ image: CGImage, key: String) async -> TextureResource? {
+    // The drawing closure is only invoked on a cache miss, avoiding Core Graphics work on hits.
+    private static func loadTexture(key: String, drawing: () -> CGImage?) async -> TextureResource? {
         let k = key as NSString
         if let cached = textureCache.object(forKey: k) { return cached }
-        guard let tex = try? await TextureResource(image: image, withName: key,
+        guard let img = drawing(),
+              let tex = try? await TextureResource(image: img, withName: key,
                                                    options: .init(semantic: .color)) else { return nil }
         textureCache.setObject(tex, forKey: k)
         return tex
@@ -252,8 +276,7 @@ enum VolumeNode {
                  x: 20, y: hf - 180, maxWidth: wf - 40, truncate: false)
 
         if let mod = try? fileNode.url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate {
-            let fmt = DateFormatter(); fmt.dateStyle = .medium; fmt.timeStyle = .short
-            drawLine(ctx: ctx, text: "Modified \(fmt.string(from: mod))", font: sysFont(16),
+            drawLine(ctx: ctx, text: "Modified \(modificationDateFormatter.string(from: mod))", font: sysFont(16),
                      color: CGColor.from(hex: t.dateText) ?? CGColor(gray: 0.4, alpha: 1),
                      x: 20, y: hf - 216, maxWidth: wf - 40, truncate: false)
         }
@@ -285,44 +308,58 @@ enum VolumeNode {
     }
 
     private static func sysFontBold(_ size: CGFloat) -> CTFont {
-        CTFontCreateUIFontForLanguage(.emphasizedSystem, size, nil) ?? CTFontCreateWithName("Helvetica-Bold" as CFString, size, nil)
+        if let f = boldFonts[size] { return f }
+        let f = CTFontCreateUIFontForLanguage(.emphasizedSystem, size, nil) ?? CTFontCreateWithName("Helvetica-Bold" as CFString, size, nil)
+        boldFonts[size] = f
+        return f
     }
     private static func sysFont(_ size: CGFloat) -> CTFont {
-        CTFontCreateUIFontForLanguage(.user, size, nil) ?? CTFontCreateWithName("Helvetica" as CFString, size, nil)
+        if let f = regularFonts[size] { return f }
+        let f = CTFontCreateUIFontForLanguage(.user, size, nil) ?? CTFontCreateWithName("Helvetica" as CFString, size, nil)
+        regularFonts[size] = f
+        return f
     }
     private static func sysFontMono(_ size: CGFloat) -> CTFont {
-        CTFontCreateUIFontForLanguage(.userFixedPitch, size, nil) ?? CTFontCreateWithName("Menlo-Regular" as CFString, size, nil)
+        if let f = monoFonts[size] { return f }
+        let f = CTFontCreateUIFontForLanguage(.userFixedPitch, size, nil) ?? CTFontCreateWithName("Menlo-Regular" as CFString, size, nil)
+        monoFonts[size] = f
+        return f
     }
 
     // MARK: - File helpers
 
+    private static let fileTypeMap: [String: String] = [
+        "swift": "Swift Source", "m": "Obj-C Source", "h": "Header",
+        "c": "C Source", "cpp": "C++ Source", "py": "Python Script",
+        "js": "JavaScript", "ts": "TypeScript", "json": "JSON",
+        "xml": "XML", "plist": "Property List", "yaml": "YAML", "yml": "YAML",
+        "md": "Markdown", "txt": "Plain Text", "rtf": "Rich Text",
+        "pdf": "PDF Document", "png": "PNG Image", "jpg": "JPEG Image",
+        "jpeg": "JPEG Image", "gif": "GIF Image", "heic": "HEIC Image",
+        "svg": "SVG Image", "mp4": "MPEG-4 Video", "mov": "QuickTime Movie",
+        "mp3": "MP3 Audio", "aac": "AAC Audio", "wav": "WAV Audio",
+        "zip": "ZIP Archive", "tar": "TAR Archive", "gz": "GZip Archive",
+        "dmg": "Disk Image", "pkg": "Installer Package",
+        "app": "Application", "framework": "Framework", "dylib": "Dynamic Library",
+        "xcodeproj": "Xcode Project", "xcworkspace": "Xcode Workspace",
+        "storyboard": "Interface Builder", "xib": "Interface Builder",
+        "html": "HTML", "css": "Stylesheet", "sh": "Shell Script",
+        "rb": "Ruby Script", "go": "Go Source", "rs": "Rust Source"
+    ]
+
+    private static let sizeUnits: [(label: String, factor: Int64)] = [
+        ("GB", 1_073_741_824), ("MB", 1_048_576), ("KB", 1_024)
+    ]
+
     private static func fileTypeLabel(ext: String) -> String {
         guard !ext.isEmpty else { return "Document" }
-        let map: [String: String] = [
-            "swift": "Swift Source", "m": "Obj-C Source", "h": "Header",
-            "c": "C Source", "cpp": "C++ Source", "py": "Python Script",
-            "js": "JavaScript", "ts": "TypeScript", "json": "JSON",
-            "xml": "XML", "plist": "Property List", "yaml": "YAML", "yml": "YAML",
-            "md": "Markdown", "txt": "Plain Text", "rtf": "Rich Text",
-            "pdf": "PDF Document", "png": "PNG Image", "jpg": "JPEG Image",
-            "jpeg": "JPEG Image", "gif": "GIF Image", "heic": "HEIC Image",
-            "svg": "SVG Image", "mp4": "MPEG-4 Video", "mov": "QuickTime Movie",
-            "mp3": "MP3 Audio", "aac": "AAC Audio", "wav": "WAV Audio",
-            "zip": "ZIP Archive", "tar": "TAR Archive", "gz": "GZip Archive",
-            "dmg": "Disk Image", "pkg": "Installer Package",
-            "app": "Application", "framework": "Framework", "dylib": "Dynamic Library",
-            "xcodeproj": "Xcode Project", "xcworkspace": "Xcode Workspace",
-            "storyboard": "Interface Builder", "xib": "Interface Builder",
-            "html": "HTML", "css": "Stylesheet", "sh": "Shell Script",
-            "rb": "Ruby Script", "go": "Go Source", "rs": "Rust Source"
-        ]
-        return map[ext.lowercased()] ?? "\(ext) File"
+        return fileTypeMap[ext.lowercased()] ?? "\(ext) File"
     }
 
     private static func fileSizeString(url: URL) -> String {
         guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { return "—" }
         let bytes = Int64(size)
-        for (label, factor): (String, Int64) in [("GB", 1_073_741_824), ("MB", 1_048_576), ("KB", 1_024)] {
+        for (label, factor) in sizeUnits {
             if bytes >= factor {
                 let val = Double(bytes) / Double(factor)
                 return String(format: val < 10 ? "%.1f \(label)" : "%.0f \(label)", val)

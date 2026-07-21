@@ -102,6 +102,7 @@ final class FileSystemSceneManager {
 
         let container = Entity()
         container.position = SIMD3<Float>(entity.position.x, boxHeight / 2 + 0.04, entity.position.z)
+        container.components.set(OpacityComponent(opacity: 0))
         entity.parent?.addChild(container)
         previewContainer = container
 
@@ -128,6 +129,12 @@ final class FileSystemSceneManager {
         let scaleFactor = min(scaleX, scaleZ)
         let miniSpacing = spacing * scaleFactor
 
+        let offsetX = -Float(min(cols, previewChildren.count) - 1) * miniSpacing / 2
+        let offsetZ = -Float(rows - 1) * miniSpacing / 2
+
+        // Build all geometry before touching the scene so entities don't pop in one by one.
+        var minis: [ModelEntity] = []
+        minis.reserveCapacity(previewChildren.count)
         for (i, node) in previewChildren.enumerated() {
             guard !Task.isCancelled else { return }
             let mini = await VolumeNode.make(fileNode: node, boxWidth: boxSize, boxDepth: boxSize, theme: theme)
@@ -137,19 +144,13 @@ final class FileSystemSceneManager {
             let miniHeight = mini.boxHeight * scaleFactor
             let col = i % cols
             let row = i / cols
-            mini.position = SIMD3<Float>(Float(col) * miniSpacing, miniHeight / 2, Float(row) * miniSpacing)
-            container.addChild(mini)
+            mini.position = SIMD3<Float>(Float(col) * miniSpacing + offsetX, miniHeight / 2, Float(row) * miniSpacing + offsetZ)
+            minis.append(mini)
         }
         guard !Task.isCancelled else { return }
 
-        let offsetX = -Float(min(cols, previewChildren.count) - 1) * miniSpacing / 2
-        let offsetZ = -Float(rows - 1) * miniSpacing / 2
-        for child in container.children {
-            child.position.x += offsetX
-            child.position.z += offsetZ
-        }
+        for mini in minis { container.addChild(mini) }
 
-        container.components.set(OpacityComponent(opacity: 0))
         if let fadeIn = try? AnimationResource.makeActionAnimation(
             for: FromToByAction<Float>(to: 1, timing: .linear, isAdditive: false),
             duration: 0.2, bindTarget: .opacity
