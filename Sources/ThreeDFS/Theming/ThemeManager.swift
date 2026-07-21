@@ -5,14 +5,15 @@ import AppKit
 #endif
 
 @MainActor
-final class ThemeManager: ObservableObject {
+@Observable
+final class ThemeManager {
     static let shared = ThemeManager()
 
-    @Published var current: Theme = .default_ {
+    var current: Theme = .default_ {
         didSet { saveSelection() }
     }
 
-    @Published private(set) var customThemes: [Theme] = []
+    private(set) var customThemes: [Theme] = []
 
     var allThemes: [Theme] { Theme.builtIn + customThemes }
 

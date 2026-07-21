@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
-    @StateObject private var navigator = FileNavigator()
+    @State private var navigator = FileNavigator()
     @State private var showBreadcrumbs = true
     #if os(visionOS)
     @State private var showingThemeEditor = false
@@ -120,10 +120,9 @@ struct ContentView: View {
 // MARK: - Toolbar
 
 private struct Toolbar: View {
-    @ObservedObject var navigator: FileNavigator
+    var navigator: FileNavigator
     @Binding var showBreadcrumbs: Bool
-    var openThemeEditor: (() -> Void)? = nil
-    @ObservedObject private var themeManager: ThemeManager = .shared
+    private let themeManager: ThemeManager = .shared
     @Environment(\.openWindow) private var openWindow
     @State private var showingThemeImporter = false
     @State private var showingImportError = false

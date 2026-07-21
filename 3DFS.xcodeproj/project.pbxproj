@@ -25,6 +25,7 @@
 		A1B2C3D4E5F60044000000AA /* ThemeEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60017000000AA /* ThemeEditorView.swift */; };
 		A1B2C3D4E5F60045000000AA /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60014000000AA /* Theme.swift */; };
 		A1B2C3D4E5F60046000000AA /* ThemeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60015000000AA /* ThemeManager.swift */; };
+		A1B2C3D4E5F60047000000AA /* GameControllerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60018000000AA /* GameControllerManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -49,6 +50,7 @@
 		A1B2C3D4E5F60015000000AA /* ThemeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeManager.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60016000000AA /* YAMLThemeParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YAMLThemeParser.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60017000000AA /* ThemeEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeEditorView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60018000000AA /* GameControllerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameControllerManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -146,6 +148,7 @@
 				A1B2C3D4E5F60035000000AA /* Views */,
 				A1B2C3D4E5F60036000000AA /* Scene */,
 				A1B2C3D4E5F60039000000AA /* Theming */,
+				A1B2C3D4E5F6003A000000AA /* Input */,
 			);
 			path = ThreeDFS;
 			sourceTree = "<group>";
@@ -159,6 +162,14 @@
 				A1B2C3D4E5F60017000000AA /* ThemeEditorView.swift */,
 			);
 			path = Theming;
+			sourceTree = "<group>";
+		};
+		A1B2C3D4E5F6003A000000AA /* Input */ = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D4E5F60018000000AA /* GameControllerManager.swift */,
+			);
+			path = Input;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -247,6 +258,7 @@
 				A1B2C3D4E5F60046000000AA /* ThemeManager.swift in Sources */,
 				A1B2C3D4E5F60043000000AA /* YAMLThemeParser.swift in Sources */,
 				A1B2C3D4E5F60044000000AA /* ThemeEditorView.swift in Sources */,
+				A1B2C3D4E5F60047000000AA /* GameControllerManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

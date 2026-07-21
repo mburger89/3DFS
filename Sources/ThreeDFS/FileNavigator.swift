@@ -1,22 +1,24 @@
 import Foundation
+import Observation
 
 @MainActor
-final class FileNavigator: ObservableObject {
-    @Published private(set) var path: [FileNode] = []
-    @Published private(set) var currentChildren: [FileNode] = []
-    @Published private(set) var isLoading = false
-    @Published private(set) var epoch: UUID = UUID()
+@Observable
+final class FileNavigator {
+    private(set) var path: [FileNode] = []
+    private(set) var currentChildren: [FileNode] = []
+    private(set) var isLoading = false
+    private(set) var epoch: UUID = UUID()
 
     /// True until the user has either granted Full Disk Access or chosen a folder.
-    @Published private(set) var needsRootSelection = true
+    private(set) var needsRootSelection = true
 
     /// Set to true to present the system folder picker from a containing view's .fileImporter.
-    @Published var showingFolderPicker = false
+    var showingFolderPicker = false
 
     let index = FileSystemIndex()
 
-    private var securityScopedRoot: URL?
-    private let bookmarkKey = "com.maxburger.threedfs.rootBookmark"
+    @ObservationIgnored private var securityScopedRoot: URL?
+    @ObservationIgnored private let bookmarkKey = "com.maxburger.threedfs.rootBookmark"
 
     init() {
 #if os(macOS)

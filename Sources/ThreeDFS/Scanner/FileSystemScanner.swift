@@ -43,28 +43,35 @@ enum FileSystemScanner {
         ) else { return [] }
 
         var nodes: [FileNode] = []
+        let keySet = Set(keys)
+        let gcKeys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey]
+        let gcKeySet = Set(gcKeys)
 
         for childURL in contents.sorted(by: { $0.lastPathComponent.lowercased() < $1.lastPathComponent.lowercased() }) {
-            let rv = try? childURL.resourceValues(forKeys: Set(keys))
+            let rv = try? childURL.resourceValues(forKeys: keySet)
             guard !(rv?.isHidden ?? false) else { continue }
 
             let isDir = rv?.isDirectory ?? false
             let isPkg = rv?.isPackage ?? false
 
             if isDir && !isPkg {
-                let gcKeys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey]
                 let grandChildren = (try? fm.contentsOfDirectory(
                     at: childURL,
                     includingPropertiesForKeys: gcKeys,
                     options: [.skipsHiddenFiles]
                 )) ?? []
-                let sorted = grandChildren.sorted { $0.lastPathComponent.lowercased() < $1.lastPathComponent.lowercased() }
-                let topChildren = sorted.prefix(8).map { $0.lastPathComponent }
+                // Single pass: collect names + isDir flag, then sort once for topChildren.
                 var folders = 0
+                var items: [(name: String, isDir: Bool)] = []
+                items.reserveCapacity(grandChildren.count)
                 for gc in grandChildren {
-                    let rv = try? gc.resourceValues(forKeys: Set(gcKeys))
-                    if (rv?.isDirectory ?? false) && !(rv?.isPackage ?? false) { folders += 1 }
+                    let rv = try? gc.resourceValues(forKeys: gcKeySet)
+                    let isGcDir = (rv?.isDirectory ?? false) && !(rv?.isPackage ?? false)
+                    if isGcDir { folders += 1 }
+                    items.append((gc.lastPathComponent, isGcDir))
                 }
+                items.sort { $0.name.lowercased() < $1.name.lowercased() }
+                let topChildren = items.prefix(8).map { $0.name }
                 nodes.append(FileNode(
                     url: childURL,
                     isDirectory: true,

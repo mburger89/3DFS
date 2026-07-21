@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct BreadcrumbBar: View {
-    @ObservedObject var navigator: FileNavigator
+    var navigator: FileNavigator
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {

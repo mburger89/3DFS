@@ -9,7 +9,9 @@ Built with SwiftUI, RealityKit, and macOS 26's Liquid Glass APIs.
 ## Features
 
 - **3D file system visualization** — directories scale in height by child count, files are always flat
-- **Keyboard & gesture navigation** — orbit, pan, and zoom with drag / pinch / WASD / Q / E
+- **Keyboard & mouse navigation** — orbit, pan, zoom, and fly with WASD / Q / E
+- **Gamepad support** — any MFi/Xbox/PlayStation-style controller can drive the camera and navigate folders
+- **Hover preview** — aim at a directory (mouse or gamepad reticle) and it cuts in half with a shrunk peek of its contents stacked on top, before you commit to entering it
 - **Breadcrumb trail** — shows your current path and lets you jump back to any ancestor
 - **Theming** — four built-in themes, a live theme editor, and support for custom YAML themes
 - **Full Disk Access or folder picker** — browse your entire home directory or scope to a specific folder
@@ -25,6 +27,16 @@ Built with SwiftUI, RealityKit, and macOS 26's Liquid Glass APIs.
 | WASD | Pan focus point |
 | Tap a volume | Enter directory |
 | ⌘[ | Go back |
+
+**Gamepad** (macOS/iOS use a screen-center reticle to aim; visionOS uses native gaze + pinch instead):
+
+| Input | Action |
+|-------|--------|
+| Left stick | Move focus point |
+| Right stick | Orbit camera |
+| Triggers (L2/R2) | Zoom out/in |
+| A / Cross | Enter highlighted directory |
+| B / Circle | Go back |
 
 ---
 
@@ -74,15 +86,17 @@ Sources/ThreeDFS/
 │   ├── FileSystemScanner.swift # Live directory read at navigate time
 │   └── FileSystemIndex.swift   # Background pre-scan actor
 ├── Scene/
-│   ├── FileScapeSceneView.swift # SwiftUI RealityView wrapper + gesture handling
-│   ├── FileSystemScene.swift    # FileSystemSceneManager — builds the 3D grid
-│   ├── VolumeNode.swift         # RealityKit ModelEntity factory + VolumeNodeComponent
+│   ├── FileScapeSceneView.swift # SwiftUI RealityView + gesture/gamepad wiring
+│   ├── FileSystemScene.swift    # RealityKit scene manager — builds the 3D grid
+│   ├── VolumeNode.swift         # ModelEntity factory for each file/dir
 │   └── CameraController.swift   # Spherical camera (orbit/pan/zoom)
 ├── Theming/
 │   ├── Theme.swift              # Codable theme model
 │   ├── ThemeManager.swift       # Singleton, built-in + custom themes
 │   ├── ThemeEditorView.swift    # Live theme editor window
 │   └── YAMLThemeParser.swift    # Lightweight YAML → JSON parser
+├── Input/
+│   └── GameControllerManager.swift # Gamepad polling (GameController framework)
 └── Views/
     ├── BreadcrumbBar.swift      # Path breadcrumb strip
     └── WelcomeView.swift        # First-launch access flow

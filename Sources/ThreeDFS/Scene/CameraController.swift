@@ -36,12 +36,25 @@ final class CameraController {
 
     // MARK: - Apply
 
-    /// Moves and orients a perspective camera entity (macOS/iOS).
-    func apply(to cameraEntity: Entity) {
+    /// World-space position of the perspective camera (macOS/iOS).
+    var position: SIMD3<Float> {
         let x = focusPoint.x + distance * cos(elevation) * sin(azimuth)
         let y = max(0.4, distance * sin(elevation))
         let z = focusPoint.z + distance * cos(elevation) * cos(azimuth)
-        cameraEntity.look(at: focusPoint, from: SIMD3<Float>(x, y, z), relativeTo: nil)
+        return SIMD3<Float>(x, y, z)
+    }
+
+    /// Unit vector from the camera position toward the focus point — used to aim the
+    /// gamepad reticle raycast at whatever the camera is currently looking at.
+    var forwardDirection: SIMD3<Float> {
+        let delta = focusPoint - position
+        let length = simd_length(delta)
+        return length > 0.0001 ? delta / length : SIMD3<Float>(0, 0, -1)
+    }
+
+    /// Moves and orients a perspective camera entity (macOS/iOS).
+    func apply(to cameraEntity: Entity) {
+        cameraEntity.look(at: focusPoint, from: position, relativeTo: nil)
     }
 
     /// Rotates and positions the world entity to simulate orbiting.

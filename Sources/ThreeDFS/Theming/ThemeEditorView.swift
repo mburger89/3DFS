@@ -39,7 +39,7 @@ extension Color {
 // MARK: - Theme Editor (standalone window)
 
 struct ThemeEditorView: View {
-    @ObservedObject private var manager: ThemeManager = .shared
+    private let manager: ThemeManager = .shared
     @State private var selectedName: String = ThemeManager.shared.current.name
     @State private var showingNewThemeAlert = false
     @State private var newThemeName = ""

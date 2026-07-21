@@ -1,6 +1,7 @@
 #if os(macOS)
 import Foundation
 import AppKit
+import Observation
 
 /// Detects and requests macOS Full Disk Access.
 ///
@@ -8,10 +9,11 @@ import AppKit
 /// Full Disk Access) that lets an app read the entire filesystem even inside the sandbox.
 /// We detect it by checking if a TCC-protected path is readable, then poll until granted.
 @MainActor
-final class FullDiskAccessHelper: ObservableObject {
-    @Published private(set) var isGranted: Bool = false
+@Observable
+final class FullDiskAccessHelper {
+    private(set) var isGranted: Bool = false
 
-    private var pollTask: Task<Void, Never>?
+    @ObservationIgnored private var pollTask: Task<Void, Never>?
 
     // A path that is only readable when Full Disk Access has been granted.
     private static let probePath = "/Library/Application Support/com.apple.TCC/TCC.db"
