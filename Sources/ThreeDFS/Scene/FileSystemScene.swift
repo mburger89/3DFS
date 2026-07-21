@@ -117,10 +117,16 @@ final class FileSystemSceneManager {
         let previewChildren = Array(children.prefix(24))
         guard !previewChildren.isEmpty else { return }
 
-        let scaleFactor: Float = 0.42
-        let miniSpacing = spacing * scaleFactor
         let cols = gridColumnCount(for: previewChildren.count)
         let rows = Int(ceil(Double(previewChildren.count) / Double(cols)))
+
+        // Scale the mini-grid so its footprint fits within the hovered folder's boxSize × boxSize area,
+        // leaving a 12.5% margin on each side.
+        let targetSize = boxSize * (1 - 0.125)
+        let scaleX = cols > 1 ? targetSize / (Float(cols - 1) * spacing + boxSize) : (1 - 0.125)
+        let scaleZ = rows > 1 ? targetSize / (Float(rows - 1) * spacing + boxSize) : (1 - 0.125)
+        let scaleFactor = min(scaleX, scaleZ)
+        let miniSpacing = spacing * scaleFactor
 
         for (i, node) in previewChildren.enumerated() {
             guard !Task.isCancelled else { return }
